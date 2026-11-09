@@ -365,3 +365,45 @@ func TestEngineBlocksFreeTier(t *testing.T) {
 		t.Fatal("Pro no debe estar bloqueado")
 	}
 }
+
+func TestMergedTweaksKeepOldBackups(t *testing.T) {
+	st := store{Items: map[string]*Backup{
+		"nvidia_perf_profile": {At: "2026-01-02", Nvidia: []NvOrig{{ID: 1, Value: 5}, {ID: 2, Value: 6}}},
+		"nvidia_profile":      {At: "2026-01-03", Nvidia: []NvOrig{{ID: 2, Value: 99}, {ID: 3, Value: 7}}},
+		"nv_pstate":           {At: "2026-01-01", Items: []BackupItem{{Change: RegChange{Root: "HKLM", Path: "p", Name: "n"}, Orig: RegState{Exists: true, Kind: "dword", D: 4}}}},
+		"mouse_accel":         {At: "2026-01-04", Items: []BackupItem{{Change: RegChange{Root: "HKCU", Path: "m", Name: "MouseSpeed"}, Orig: RegState{Exists: true, Kind: "sz", S: "1"}}}},
+	}}
+	if !migrateBackups(&st) {
+		t.Fatal("debía migrar")
+	}
+	for _, old := range []string{"nvidia_perf_profile", "nv_pstate", "mouse_accel"} {
+		if _, ok := st.Items[old]; ok {
+			t.Errorf("el backup viejo %s no se movió", old)
+		}
+	}
+	nvp := st.Items["nvidia_profile"]
+	ids := map[uint32]uint32{}
+	for _, o := range nvp.Nvidia {
+		ids[o.ID] = o.Value
+	}
+	if len(nvp.Nvidia) != 3 || ids[2] != 99 || ids[1] != 5 || ids[3] != 7 {
+		t.Fatalf("valores originales mezclados mal (el más antiguo/ya guardado debe ganar): %+v", nvp.Nvidia)
+	}
+	if len(nvp.Items) != 1 || nvp.Items[0].Orig.D != 4 {
+		t.Fatalf("el valor de registro de nv_pstate se perdió: %+v", nvp.Items)
+	}
+	if mr := st.Items["mouse_raw_curve"]; mr == nil || len(mr.Items) != 1 || mr.Items[0].Orig.S != "1" {
+		t.Fatalf("el backup de mouse_accel no pasó a mouse_raw_curve: %+v", mr)
+	}
+}
+
+func TestAliasesPointToExistingTweaks(t *testing.T) {
+	for old, now := range tweakAliases {
+		if _, ok := findTweak(old); ok {
+			t.Errorf("%s sigue en el catálogo pero figura como unido", old)
+		}
+		if _, ok := findTweak(now); !ok {
+			t.Errorf("%s -> %s: el destino no existe", old, now)
+		}
+	}
+}

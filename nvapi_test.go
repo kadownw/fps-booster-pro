@@ -38,7 +38,7 @@ func TestNvApplyRestore(t *testing.T) {
 	if os.Getenv("FBP_ADMIN_TESTS") != "1" || !isAdmin() || !nvAvailable() {
 		t.Skip("define FBP_ADMIN_TESTS=1, ejecuta como administrador y con NVIDIA")
 	}
-	for _, id := range []string{"nvidia_profile", "nvidia_perf_profile"} {
+	for _, id := range []string{"nvidia_profile"} {
 		tw, _ := findTweak(id)
 		orig, err := nvReadOriginals(tw.Nvidia)
 		if err != nil {

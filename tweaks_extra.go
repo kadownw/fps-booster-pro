@@ -53,11 +53,6 @@ func extraCatalog() []Tweak {
 			},
 		},
 		{
-			ID: "search_web", Title: "Búsqueda de Inicio sin resultados web", Category: "Sistema",
-			Description: "El menú Inicio deja de buscar en internet cada vez que escribís: responde más rápido y envía menos datos.",
-			Changes:     []RegChange{dw("HKCU", `Software\Policies\Microsoft\Windows\Explorer`, "DisableSearchBoxSuggestions", 1)},
-		},
-		{
 			ID: "delivery_opt", Title: "Desactivar Optimización de distribución", Category: "Red", Admin: true,
 			Description: "Windows deja de usar tu conexión para compartir actualizaciones con otros equipos. Libera ancho de banda mientras jugás.",
 			Changes:     []RegChange{dw("HKLM", polWindows+`\DeliveryOptimization`, "DODownloadMode", 0)},
@@ -124,9 +119,21 @@ func extraCatalog() []Tweak {
 			},
 		},
 		{
-			ID: "telemetry", Title: "Reducir telemetría de Windows", Category: "Privacidad", Admin: true,
-			Description: "Baja la recolección de datos de diagnóstico al mínimo permitido y apaga el inventario de aplicaciones y los avisos de opinión. Algunas ediciones de Windows mantienen un nivel básico.",
-			Changes: []RegChange{
+			ID: "telemetry", Title: "Reducir telemetría de Windows", Category: "Privacidad", Admin: true, Reboot: true,
+			Description: "Todo lo de telemetría en un solo ajuste: baja la recolección de datos de diagnóstico al mínimo permitido, apaga el inventario de aplicaciones y los avisos de opinión, deshabilita las tareas programadas que recopilan datos (Application Experience, CEIP, Siuf), los servicios de telemetría (DiagTrack, dmwappushservice, DcpSvc, PcaSvc) y los registradores de diagnóstico de arranque. Solo se tocan los que existen en tu Windows. Algunas ediciones de Windows mantienen un nivel básico.",
+			Tasks: []string{
+				`\Microsoft\Windows\Application Experience\Microsoft Compatibility Appraiser`,
+				`\Microsoft\Windows\Application Experience\ProgramDataUpdater`,
+				`\Microsoft\Windows\Application Experience\MareBackup`,
+				`\Microsoft\Windows\Application Experience\StartupAppTask`,
+				`\Microsoft\Windows\Application Experience\PcaPatchDbTask`,
+				`\Microsoft\Windows\Autochk\Proxy`,
+				`\Microsoft\Windows\Customer Experience Improvement Program\Consolidator`,
+				`\Microsoft\Windows\Customer Experience Improvement Program\UsbCeip`,
+				`\Microsoft\Windows\Feedback\Siuf\DmClient`,
+				`\Microsoft\Windows\Feedback\Siuf\DmClientOnScenarioDownload`,
+			},
+			Changes: append(append(svcs(startDisabled, "DiagTrack", "dmwappushservice", "DcpSvc", "PcaSvc"), bootLoggers()...), []RegChange{
 				dw("HKLM", `SOFTWARE\Microsoft\Windows\CurrentVersion\Policies\DataCollection`, "AllowTelemetry", 0),
 				dw("HKLM", polDataColl, "AllowTelemetry", 0),
 				dw("HKLM", polDataColl, "DoNotShowFeedbackNotifications", 1),
@@ -141,15 +148,21 @@ func extraCatalog() []Tweak {
 				dw("HKLM", `SOFTWARE\Policies\Microsoft\Assistance\Client\1.0`, "NoActiveHelp", 1),
 				dw("HKLM", polDataColl, "MicrosoftEdgeDataOptIn", 0),
 				dw("HKCU", `SOFTWARE\Microsoft\Speech_OneCore\Settings\OnlineSpeechPrivacy`, "HasAccepted", 0),
-			},
+			}...),
 		},
 		{
-			ID: "error_reporting", Title: "Desactivar informe de errores de Windows", Category: "Privacidad", Admin: true,
-			Description: "Windows deja de recopilar y enviar informes cuando una aplicación se cierra con error.",
-			Changes: []RegChange{
+			ID: "error_reporting", Title: "Desactivar informe de errores de Windows", Category: "Privacidad", Admin: true, Reboot: true,
+			Description: "Windows deja de recopilar y enviar informes cuando una aplicación se cierra con error: política, servicio de informes (WerSvc) y las tareas programadas de informes de errores y diagnóstico de disco. Solo se tocan los que existen en tu Windows.",
+			Tasks: []string{
+				`\Microsoft\Windows\Windows Error Reporting\QueueReporting`,
+				`\Microsoft\Windows\DiskDiagnostic\Microsoft-Windows-DiskDiagnosticDataCollector`,
+				`\Microsoft\Windows\DiskDiagnostic\Microsoft-Windows-DiskDiagnosticResolver`,
+				`\Microsoft\Windows\Diagnosis\Scheduled`,
+			},
+			Changes: append(svcs(startDisabled, "WerSvc"), []RegChange{
 				dw("HKLM", `SOFTWARE\Microsoft\Windows\Windows Error Reporting`, "Disabled", 1),
 				dw("HKLM", polWindows+`\HandwritingErrorReports`, "PreventHandwritingErrorReports", 1),
-			},
+			}...),
 		},
 		{
 			ID: "copilot", Title: "Desactivar Copilot", Category: "Privacidad", Admin: true, MinBuild: buildWin11,
@@ -159,32 +172,6 @@ func extraCatalog() []Tweak {
 				dw("HKCU", `Software\Policies\Microsoft\Windows\WindowsCopilot`, "TurnOffWindowsCopilot", 1),
 				dw("HKCU", explorerAdv, "ShowCopilotButton", 0),
 				sz("HKLM", `SOFTWARE\Microsoft\Windows\CurrentVersion\Shell Extensions\Blocked`, "{CB3B0003-8088-4EDE-8769-8B354AB2FF8C}", ""),
-			},
-		},
-		{
-			ID: "telemetry_tasks", Title: "Desactivar tareas programadas de telemetría", Category: "Privacidad", Admin: true,
-			Description: "Deshabilita las tareas que recopilan datos de compatibilidad y experiencia de usuario (Application Experience, CEIP, Siuf, Autochk Proxy). Solo las que existen en tu Windows.",
-			Tasks: []string{
-				`\Microsoft\Windows\Application Experience\Microsoft Compatibility Appraiser`,
-				`\Microsoft\Windows\Application Experience\ProgramDataUpdater`,
-				`\Microsoft\Windows\Application Experience\MareBackup`,
-				`\Microsoft\Windows\Application Experience\StartupAppTask`,
-				`\Microsoft\Windows\Application Experience\PcaPatchDbTask`,
-				`\Microsoft\Windows\Autochk\Proxy`,
-				`\Microsoft\Windows\Customer Experience Improvement Program\Consolidator`,
-				`\Microsoft\Windows\Customer Experience Improvement Program\UsbCeip`,
-				`\Microsoft\Windows\Feedback\Siuf\DmClient`,
-				`\Microsoft\Windows\Feedback\Siuf\DmClientOnScenarioDownload`,
-			},
-		},
-		{
-			ID: "error_tasks", Title: "Desactivar tareas de informes de errores y diagnóstico de disco", Category: "Privacidad", Admin: true,
-			Description: "Deshabilita las tareas programadas que envían informes de errores y datos de diagnóstico de disco.",
-			Tasks: []string{
-				`\Microsoft\Windows\Windows Error Reporting\QueueReporting`,
-				`\Microsoft\Windows\DiskDiagnostic\Microsoft-Windows-DiskDiagnosticDataCollector`,
-				`\Microsoft\Windows\DiskDiagnostic\Microsoft-Windows-DiskDiagnosticResolver`,
-				`\Microsoft\Windows\Diagnosis\Scheduled`,
 			},
 		},
 		{

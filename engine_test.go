@@ -9,7 +9,7 @@ func TestRoundTripHKCU(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	for _, id := range []string{"transparency", "mouse_accel", "menu_delay", "game_dvr"} {
+	for _, id := range []string{"transparency", "visual_fx", "menu_delay", "game_dvr"} {
 		tw, _ := findTweak(id)
 		before := make([]RegState, len(expand(tw)))
 		for i, c := range expand(tw) {

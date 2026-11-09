@@ -42,8 +42,8 @@ func ultimateCatalog() []Tweak {
 			Changes:     []RegChange{dw("HKCU", mouseKey2, "RawMouseThrottleEnabled", 0)},
 		},
 		{
-			ID: "mouse_raw_curve", Title: "Puntero 1:1 sin aceleración (raw aim)", Category: "Entrada",
-			Description: "Sensibilidad 6/11, sin precisión del puntero y curvas de aceleración lineales: el movimiento del mouse en Windows es proporcional y predecible. " +
+			ID: "mouse_raw_curve", Title: "Mouse sin aceleración y puntero 1:1 (raw aim)", Category: "Entrada",
+			Description: "Apaga la precisión mejorada del puntero y fija la sensibilidad en 6/11 con curvas lineales: el movimiento del mouse en Windows es proporcional y predecible (útil en shooters). " +
 				"Las curvas son para escala de pantalla del 100 %. Cerrá sesión para aplicarlo del todo.",
 			Changes: []RegChange{
 				sz("HKCU", mouseKey2, "MouseSensitivity", "10"),
@@ -77,15 +77,11 @@ func ultimateCatalog() []Tweak {
 			},
 		},
 		{
-			ID: "bg_apps_policy", Title: "Prohibir apps en segundo plano (política)", Category: "Sistema", Admin: true,
-			Description: "Política del sistema que impide que las apps de la Tienda corran en segundo plano para todos los usuarios. Es la versión de administrador del ajuste de usuario.",
-			Changes:     []RegChange{dw("HKLM", `SOFTWARE\Policies\Microsoft\Windows\AppPrivacy`, "LetAppsRunInBackground", 2)},
-		},
-		{
 			ID: "updates_pause", Title: "Pausar Windows Update 35 días", Category: "Sistema", Admin: true,
-			Description: "Pausa las actualizaciones de calidad y de características por 35 días desde hoy, para que no se instalen en medio de tus sesiones. " +
+			Description: "Quita el límite de días de pausa de Windows y pausa las actualizaciones de calidad y de características por 35 días desde hoy, para que no se instalen en medio de tus sesiones. " +
 				"Los parches de seguridad se retrasan: al revertir o al vencer la pausa se instalan con normalidad.",
 			Changes: []RegChange{
+				dw("HKLM", `SOFTWARE\Microsoft\WindowsUpdate\UX\Settings`, "FlightSettingsMaxPauseDays", 0xffffffff),
 				dated("PauseUpdatesStartTime", "now"), dated("PauseUpdatesExpiryTime", "+35d"),
 				dated("PauseFeatureUpdatesStartTime", "now"), dated("PauseFeatureUpdatesEndTime", "+35d"),
 				dated("PauseQualityUpdatesStartTime", "now"), dated("PauseQualityUpdatesEndTime", "+35d"),

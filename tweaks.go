@@ -164,15 +164,12 @@ const (
 // Los ajustes de Windows del catálogo coinciden con prácticas conocidas (guías de latencia,
 // documentación de MMCSS); los valores se reimplementaron de forma independiente.
 var moderate = map[string]bool{"hags": true, "games_priority": true, "foreground_boost": true,
-	"net_throttle": true, "bg_apps": true, "nv_pstate": true, "mmcss_extra": true,
+	"net_throttle": true, "bg_apps": true, "mmcss_extra": true,
 	"power_throttle": true, "sticky_keys": true, "telemetry": true, "error_reporting": true,
-	"copilot": true, "ai_recall": true, "svc_unneeded": true, "svc_background_manual": true,
-	"svc_xbox_manual": true, "svc_search_manual": true, "svc_print_manual": true, "svc_telemetry": true,
-	"svc_error_reporting": true, "autologgers": true, "fast_startup": true, "svchost_split": true,
+	"copilot": true, "ai_recall": true, "svc_xbox_manual": true, "fast_startup": true, "svchost_split": true,
 	"location_off": true, "cortana": true, "south_power_plan": true, "nvidia_profile": true, "hibernate_off": true,
-	"mpo_off": true, "flip_immediate": true, "nic_power_off": true, "bg_apps_policy": true, "updates_pause": true,
-	"memory_compression_off": true, "timer_resolution": true, "nv_hdcp_off": true, "nvidia_perf_profile": true,
-	"amd_graphics_perf": true, "gpu_msi_mode": true, "nv_driver_prefs": true, "svc_max_performance": true}
+	"mpo_off": true, "flip_immediate": true, "nic_power_off": true, "updates_pause": true,
+	"memory_compression_off": true, "timer_resolution": true, "nv_hdcp_off": true, "amd_graphics_perf": true, "gpu_msi_mode": true, "nv_driver_prefs": true, "svc_max_performance": true}
 
 func catalog() []Tweak {
 	list := append(rawCatalog(), extraCatalog()...)
@@ -222,15 +219,6 @@ func rawCatalog() []Tweak {
 			},
 		},
 		{
-			ID: "mouse_accel", Title: "Desactivar aceleración del mouse", Category: "Entrada",
-			Description: "Quita la precisión mejorada del puntero para que el mouse responda de forma lineal. Útil en shooters. Cierra sesión o reiniciá para aplicar del todo.",
-			Changes: []RegChange{
-				sz("HKCU", mouseKey, "MouseSpeed", "0"),
-				sz("HKCU", mouseKey, "MouseThreshold1", "0"),
-				sz("HKCU", mouseKey, "MouseThreshold2", "0"),
-			},
-		},
-		{
 			ID: "transparency", Title: "Desactivar efectos de transparencia", Category: "Visual",
 			Description: "Quita la transparencia de la barra de tareas y los menús. Libera algo de GPU en equipos con gráficos integrados. Solo cambia la apariencia.",
 			Changes:     []RegChange{dw("HKCU", personal, "EnableTransparency", 0)},
@@ -241,11 +229,12 @@ func rawCatalog() []Tweak {
 			Changes:     []RegChange{sz("HKCU", desktopKey, "MenuShowDelay", "0")},
 		},
 		{
-			ID: "bg_apps", Title: "Bloquear apps en segundo plano", Category: "Sistema",
-			Description: "Impide que las apps de la Tienda corran en segundo plano. Libera algo de RAM y CPU. Algunas apps dejarán de notificar cuando no las uses.",
+			ID: "bg_apps", Title: "Bloquear apps en segundo plano", Category: "Sistema", Admin: true,
+			Description: "Impide que las apps de la Tienda corran en segundo plano, con el ajuste de tu usuario y la política del sistema para todos los usuarios. Libera algo de RAM y CPU. Algunas apps dejarán de notificar cuando no las uses.",
 			Changes: []RegChange{
 				dw("HKCU", bgApps, "GlobalUserDisabled", 1),
 				dw("HKCU", `Software\Microsoft\Windows\CurrentVersion\Search`, "BackgroundAppGlobalToggle", 0),
+				dw("HKLM", `SOFTWARE\Policies\Microsoft\Windows\AppPrivacy`, "LetAppsRunInBackground", 2),
 			},
 		},
 		{
@@ -286,11 +275,6 @@ func rawCatalog() []Tweak {
 				sz("HKCU", kbdKey, "KeyboardDelay", "0"),
 				sz("HKCU", kbdKey, "KeyboardSpeed", "31"),
 			},
-		},
-		{
-			ID: "nv_pstate", Title: "NVIDIA: evitar cambios de estado de energía", Category: "GPU", Admin: true, Reboot: true, Vendor: "nvidia",
-			Description: "Evita que la GPU NVIDIA baje de estado de energía dinámicamente. Puede estabilizar el rendimiento; aumenta consumo en reposo.",
-			Changes:     []RegChange{dw("HKLM", gpuClass, "DisableDynamicPstate", 1)},
 		},
 		{
 			ID: "amd_ulps", Title: "AMD: desactivar ULPS", Category: "GPU", Admin: true, Reboot: true, Vendor: "amd",

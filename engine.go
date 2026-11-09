@@ -134,8 +134,80 @@ func NewEngine() (*Engine, error) {
 		if e.st.Items == nil {
 			e.st.Items = map[string]*Backup{}
 		}
+		if migrateBackups(&e.st) {
+			_ = e.save()
+		}
 	}
 	return e, nil
+}
+
+// tweakAliases: ajustes que se unieron en otro. Si el usuario tenía aplicado el viejo, su backup pasa al
+// nuevo para que se pueda revertir desde la tarjeta unificada.
+var tweakAliases = map[string]string{
+	"nvidia_perf_profile": "nvidia_profile", "nv_pstate": "nvidia_profile",
+	"mouse_accel": "mouse_raw_curve", "bg_apps_policy": "bg_apps", "update_pause": "updates_pause",
+	"telemetry_tasks": "telemetry", "svc_telemetry": "telemetry", "autologgers": "telemetry",
+	"error_tasks": "error_reporting", "svc_error_reporting": "error_reporting",
+	"search_web": "search_local", "search_cloud_off": "search_local",
+	"svc_unneeded": "svc_max_performance", "svc_background_manual": "svc_max_performance",
+	"svc_search_manual": "svc_max_performance", "svc_print_manual": "svc_max_performance",
+}
+
+// mergeBackup agrega a dst lo que src guardó y dst todavía no tiene (el valor original más antiguo gana).
+func mergeBackup(dst, src *Backup) {
+	known := map[string]bool{}
+	for _, it := range dst.Items {
+		known[it.Change.Root+"\\"+it.Change.Path+"\\"+it.Change.Name] = true
+	}
+	for _, it := range src.Items {
+		if k := it.Change.Root + "\\" + it.Change.Path + "\\" + it.Change.Name; !known[k] {
+			dst.Items = append(dst.Items, it)
+			known[k] = true
+		}
+	}
+	for p, st := range src.Tasks {
+		if _, ok := dst.Tasks[p]; !ok {
+			if dst.Tasks == nil {
+				dst.Tasks = map[string]string{}
+			}
+			dst.Tasks[p] = st
+		}
+	}
+	have := map[uint32]bool{}
+	for _, o := range dst.Nvidia {
+		have[o.ID] = true
+	}
+	for _, o := range src.Nvidia {
+		if !have[o.ID] {
+			dst.Nvidia = append(dst.Nvidia, o)
+		}
+	}
+	if dst.PrevPower == "" {
+		dst.PrevPower, dst.DeletePlan = src.PrevPower, src.DeletePlan
+	}
+	if dst.At == "" || (src.At != "" && src.At < dst.At) {
+		dst.At = src.At
+	}
+}
+
+// migrateBackups mueve los backups de ids viejos al ajuste que los absorbió. Devuelve true si cambió algo.
+func migrateBackups(st *store) bool {
+	changed := false
+	for old, now := range tweakAliases {
+		bk, ok := st.Items[old]
+		if !ok {
+			continue
+		}
+		dst, ok := st.Items[now]
+		if !ok {
+			dst = &Backup{At: bk.At}
+			st.Items[now] = dst
+		}
+		mergeBackup(dst, bk)
+		delete(st.Items, old)
+		changed = true
+	}
+	return changed
 }
 
 func (e *Engine) save() error {
@@ -190,7 +262,13 @@ func (e *Engine) isActive(t Tweak) bool {
 		return err == nil && g == planTarget(t)
 	}
 	if len(t.Nvidia) > 0 {
-		return nvIsActive(t.Nvidia)
+		if !nvIsActive(t.Nvidia) {
+			return false
+		}
+		if len(t.Changes) == 0 {
+			return true
+		}
+		// ajuste mixto (perfil del driver + valores de registro): sigue con los valores de registro
 	}
 	if t.PS != nil {
 		cur, err := psState(t.PS)
@@ -337,7 +415,13 @@ func (e *Engine) doApply(t Tweak) error {
 		return nil
 	}
 	if len(t.Nvidia) > 0 {
-		return nvApply(t.Nvidia)
+		if err := nvApply(t.Nvidia); err != nil {
+			return err
+		}
+		if len(t.Changes) == 0 {
+			return nil
+		}
+		// ajuste mixto: después del perfil del driver se escriben los valores de registro
 	}
 	if t.PS != nil {
 		if err := runAllowedPS(t.PS.Apply); err != nil {

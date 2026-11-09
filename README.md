@@ -3,9 +3,10 @@
 Ajustes **reversibles** de Windows para juegos, en un único `.exe` (Go + Wails). Sin Python ni runtimes: abrís y listo (usa WebView2, que ya viene con Windows 10/11).
 
 - Detecta CPU, GPU (con VRAM), RAM y Windows, y muestra el uso en vivo.
-- 92 ajustes en 10 categorías (Energía, Juegos, Entrada, Visual, Sistema, GPU, Red, Privacidad, Servicios y Acciones únicas): registro, planes de energía, servicios, tareas programadas, loggers de diagnóstico y perfil del driver NVIDIA.
+- 75 ajustes en 10 categorías (Energía, Juegos, Entrada, Visual, Sistema, GPU, Red, Privacidad, Servicios y Acciones únicas): registro, planes de energía, servicios, tareas programadas, loggers de diagnóstico y perfil del driver NVIDIA.
 - **South's Core power plan**: plan de energía de rendimiento (procesador siempre disponible con corriente, boost agresivo, núcleos sin estacionar, sin ahorro en discos/USB/PCIe/Wi-Fi). Con batería conserva el ahorro. Respeta el estacionamiento de núcleos en CPUs híbridas y Ryzen X3D de dos CCD. Al revertir vuelve el plan anterior y se borra.
 - **Perfil NVIDIA** vía NvAPI oficial: energía "Preferir rendimiento máximo", baja latencia (1 frame en cola) y caché de shaders activada, con restauración de cada valor previo.
+- Sin ajustes repetidos: lo que hacía lo mismo está unido en uno solo (por ejemplo, el perfil global de NVIDIA con máximo rendimiento y baja latencia, la telemetría con sus tareas, servicios y registradores, o el bloqueo de apps en segundo plano con su política). Si ya tenías aplicado alguno de los ajustes que se unieron, su backup pasa solo al nuevo y se revierte desde su tarjeta.
 - Ajustes adaptados de [Ultimate](https://github.com/FR33THYFR33THY/Ultimate) (FR33THY, MIT): ver [`docs/ULTIMATE_ADAPTATION.md`](docs/ULTIMATE_ADAPTATION.md) y [`THIRD-PARTY-NOTICES.md`](THIRD-PARTY-NOTICES.md).
 - Investigación técnica, matriz de optimizaciones y plan por fases en [`docs/research/`](docs/research/).
 - Antes de tocar nada guarda el valor original; verifica cada cambio y hace rollback si falla.

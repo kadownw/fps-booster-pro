@@ -122,24 +122,6 @@ func setupCatalog() []Tweak {
 			Changes:     []RegChange{dw("HKLM", gpuClass, "RMHdcpKeyglobZero", 1)},
 		},
 		{
-			ID: "nvidia_perf_profile", Title: "NVIDIA: gráficos en modo rendimiento (perfil global)", Category: "GPU", Admin: true,
-			Description: "Perfil global del driver con la API oficial de NVIDIA: V-Sync apagado, control de tearing desactivado, frecuencia de actualización más alta disponible, " +
-				"filtrado de texturas en «alto rendimiento» con optimizaciones anisotrópicas, optimización de hilos de OpenGL, compatibilidad GDI de OpenGL apagada, " +
-				"método de presentación DXGI para Vulkan/OpenGL apagado y caché de shaders sin límite de tamaño. Baja algo de calidad de imagen y puede mostrar tearing. Cada valor previo se guarda y se restaura.",
-			Nvidia: []NvSetting{
-				{ID: nvVSyncMode, Value: nvVSyncForceOff, Name: "V-Sync"},
-				{ID: nvVSyncTearControl, Value: nvTearDisable, Name: "Control de tearing"},
-				{ID: nvRefreshOverride, Value: nvRefreshHighest, Name: "Frecuencia de actualización preferida"},
-				{ID: nvTexQuality, Value: nvTexHighPerf, Name: "Calidad de filtrado de texturas"},
-				{ID: nvAnisoOpt, Value: 1, Name: "Optimización anisotrópica"},
-				{ID: nvAnisoSampleOpt, Value: 1, Name: "Optimización de muestras anisotrópicas"},
-				{ID: nvThreadedOpt, Value: nvOGLThreadsEnabled, Name: "Optimización de hilos (OpenGL)"},
-				{ID: nvGDICompat, Value: 0, Name: "Compatibilidad GDI de OpenGL"},
-				{ID: nvOGLPresentDXMode, Value: 0, Name: "Método de presentación Vulkan/OpenGL"},
-				{ID: nvShaderCacheMax, Value: nvShaderCacheNoCap, Name: "Tamaño máximo de la caché de shaders"},
-			},
-		},
-		{
 			ID: "amd_software_prefs", Title: "AMD Software: sin overlay, avisos ni anuncios", Category: "GPU", Vendor: "amd",
 			Description: "En AMD Software (Adrenalin): sin actualización automática, sin overlay en juego, sin atajos de teclado, sin ícono de bandeja, sin navegador web integrado, sin anuncios ni avisos y sin animaciones.",
 			Changes: []RegChange{

@@ -93,7 +93,7 @@ func (e *Engine) diagnose(t Tweak, active bool) Diagnosis {
 		return yesno(active, "Aplicado en modo simulación (no se tocó tu Windows).", "No aplicado (modo simulación).")
 	case t.Power:
 		return yesno(active, "Aplicado: el plan de energía activo es el de este ajuste.", "No aplicado: el plan de energía activo es otro.")
-	case len(t.Nvidia) > 0:
+	case len(t.Nvidia) > 0 && len(t.Changes) == 0:
 		return yesno(active, fmt.Sprintf("Aplicado: los %d valores del perfil están guardados en el driver NVIDIA.", len(t.Nvidia)), fmt.Sprintf("No aplicado: el driver NVIDIA no tiene todavía los %d valores del perfil.", len(t.Nvidia)))
 	case t.PS != nil, t.Cmd != nil:
 		return yesno(active, "Aplicado: Windows informa el estado buscado.", "No aplicado: Windows informa un estado distinto al buscado.")
@@ -115,6 +115,14 @@ func (e *Engine) diagnose(t Tweak, active bool) Diagnosis {
 			d.Done++
 		} else {
 			missing = append(missing, "tarea "+p)
+		}
+	}
+	if len(t.Nvidia) > 0 { // ajuste mixto: además de los valores de registro, el perfil del driver NVIDIA
+		d.Total += len(t.Nvidia)
+		if nvIsActive(t.Nvidia) {
+			d.Done += len(t.Nvidia)
+		} else {
+			missing = append(missing, fmt.Sprintf("%d valores del perfil NVIDIA", len(t.Nvidia)))
 		}
 	}
 	skip := ""

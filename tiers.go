@@ -21,9 +21,9 @@ var errTier = errors.New("esta función es de Pro Tier (el upgrade llega pronto)
 
 // freeTweaks: lo que incluye Free Tier.
 var freeTweaks = map[string]bool{
-	"game_mode": true, "game_dvr": true, "mouse_accel": true, "transparency": true, "menu_delay": true,
+	"game_mode": true, "game_dvr": true, "mouse_raw_curve": true, "transparency": true, "menu_delay": true,
 	"visual_fx": true, "kbd_latency": true, "explorer_startup": true,
-	"startup_sound_off": true, "search_web": true, "content_delivery": true, "ads": true,
+	"startup_sound_off": true, "search_local": true, "content_delivery": true, "ads": true,
 	"news_interests": true, "flush_dns": true,
 }
 

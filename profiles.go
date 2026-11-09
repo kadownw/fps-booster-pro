@@ -21,21 +21,21 @@ var profileDefs = []Profile{
 	{
 		ID: "gaming", Title: "Gaming",
 		Description: "South's Core power plan, perfil NVIDIA de baja latencia, Modo Juego, sin grabación en segundo plano, mouse y teclado, GPU y red.",
-		Tweaks: []string{"south_power_plan", "nvidia_profile", "windowed_flip", "raw_mouse_throttle", "mouse_raw_curve", "nic_power_off", "game_mode", "game_dvr", "fullscreen_opt", "mouse_accel", "kbd_latency", "sticky_keys",
-			"bg_apps", "hags", "net_throttle", "games_priority", "mmcss_extra", "foreground_boost", "power_throttle", "nv_pstate", "amd_ulps",
-			"usb_recovery", "delivery_opt", "update_pause"},
+		Tweaks: []string{"south_power_plan", "nvidia_profile", "windowed_flip", "raw_mouse_throttle", "mouse_raw_curve", "nic_power_off", "game_mode", "game_dvr", "fullscreen_opt", "kbd_latency", "sticky_keys",
+			"bg_apps", "hags", "net_throttle", "games_priority", "mmcss_extra", "foreground_boost", "power_throttle", "amd_ulps",
+			"usb_recovery", "delivery_opt"},
 	},
 	{
 		ID: "user", Title: "Rápido y sin admin",
 		Description: "Solo ajustes de tu usuario: no pide permisos de administrador y no toca el sistema.",
-		Tweaks: []string{"game_mode", "game_dvr", "fullscreen_opt", "mouse_accel", "kbd_latency", "sticky_keys", "transparency", "visual_fx",
-			"menu_delay", "explorer_startup", "bg_apps", "search_web"},
+		Tweaks: []string{"game_mode", "game_dvr", "fullscreen_opt", "mouse_raw_curve", "kbd_latency", "sticky_keys", "transparency", "visual_fx",
+			"menu_delay", "explorer_startup", "search_local"},
 	},
 	{
 		ID: "privacy", Title: "Privacidad y segundo plano",
 		Description: "Menos telemetría, publicidad y tareas en segundo plano. No afecta tus programas.",
-		Tweaks: []string{"content_delivery", "preinstalled_apps", "ads", "activity_history", "news_interests", "telemetry", "telemetry_tasks",
-			"error_reporting", "error_tasks", "settings_ads", "find_my_device", "start_recommended", "meet_now", "copilot", "ai_recall"},
+		Tweaks: []string{"content_delivery", "preinstalled_apps", "ads", "activity_history", "news_interests", "telemetry",
+			"error_reporting", "settings_ads", "find_my_device", "start_recommended", "meet_now", "copilot", "ai_recall"},
 	},
 }
 
