@@ -98,6 +98,7 @@ type Engine struct {
 	st         store
 	sim        bool
 	simApplied map[string]bool
+	runs       map[string]string // última ejecución de acciones únicas (RFC3339)
 }
 
 func NewEngine() (*Engine, error) {
@@ -109,7 +110,7 @@ func NewEngine() (*Engine, error) {
 	if err := os.MkdirAll(dir, 0o700); err != nil {
 		return nil, err
 	}
-	e := &Engine{dir: dir, st: store{Items: map[string]*Backup{}}, simApplied: map[string]bool{}}
+	e := &Engine{dir: dir, st: store{Items: map[string]*Backup{}}, simApplied: map[string]bool{}, runs: loadRuns(dir)}
 	if b, err := os.ReadFile(filepath.Join(dir, "backup.json")); err == nil {
 		if err := json.Unmarshal(b, &e.st); err != nil {
 			return nil, fmt.Errorf("backup.json dañado (no se toca nada): %w", err)
@@ -162,6 +163,9 @@ func (e *Engine) Simulation() bool {
 
 // IsActive indica si el sistema ya está en el estado que el tweak busca.
 func (e *Engine) isActive(t Tweak) bool {
+	if t.Once {
+		return false // una acción única no deja un estado que se pueda consultar
+	}
 	if e.sim {
 		return e.simApplied[t.ID]
 	}
@@ -194,10 +198,11 @@ func (e *Engine) isActive(t Tweak) bool {
 
 type TweakView struct {
 	Tweak
-	Active   bool `json:"active"`   // el sistema está en el estado del tweak
-	CanUndo  bool `json:"canUndo"`  // hay backup para revertir
-	Blocked  bool `json:"blocked"`  // requiere admin y no lo tenemos
-	Disabled bool `json:"disabled"` // no aplica a este equipo (p. ej. no hay GPU de ese fabricante)
+	Active   bool   `json:"active"`            // el sistema está en el estado del tweak
+	CanUndo  bool   `json:"canUndo"`           // hay backup para revertir
+	Blocked  bool   `json:"blocked"`           // requiere admin y no lo tenemos
+	Disabled bool   `json:"disabled"`          // no aplica a este equipo (p. ej. no hay GPU de ese fabricante)
+	LastRun  string `json:"lastRun,omitempty"` // última vez que se ejecutó una acción única
 }
 
 func (e *Engine) List() []TweakView {
@@ -213,6 +218,7 @@ func (e *Engine) List() []TweakView {
 			CanUndo:  has || (e.sim && e.simApplied[t.ID]),
 			Blocked:  t.Admin && !adm && !e.sim,
 			Disabled: !supported(t),
+			LastRun:  e.runs[t.ID],
 		})
 	}
 	return out
@@ -226,6 +232,9 @@ func (e *Engine) Apply(id string) (err error) {
 	t, ok := findTweak(id)
 	if !ok {
 		return fmt.Errorf("ajuste desconocido: %s", id)
+	}
+	if t.Once {
+		return errors.New("esta es una acción única: usá el botón Aplicar")
 	}
 	if e.sim {
 		e.simApplied[id] = true

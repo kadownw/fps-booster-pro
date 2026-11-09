@@ -8,6 +8,7 @@ export function h(tag, props = {}, ...kids) {
     if (k === 'class') el.className = v;
     else if (k.startsWith('on')) el.addEventListener(k.slice(2), v);
     else if (k === 'style') el.style.cssText = v;
+    else if (k.startsWith('data-') || k.startsWith('aria-')) el.setAttribute(k, v);
     else el[k] = v;
   }
   append(el, kids);
@@ -45,6 +46,18 @@ export const ICONS = {
   chevron: 'M9 6l6 6-6 6',
   shield: 'M12 3l8 3v6c0 5-3.5 8-8 9-4.5-1-8-4-8-9V6z',
   restore: 'M3 12a9 9 0 109-9M3 4v5h5M12 8v4l3 2',
+  mouse: 'M7 4h10a3 3 0 013 3v10a5 5 0 01-5 5H9a5 5 0 01-5-5V7a3 3 0 013-3zM12 4v6',
+  eye: 'M2 12s3.6-7 10-7 10 7 10 7-3.6 7-10 7S2 12 2 12zM12 15a3 3 0 100-6 3 3 0 000 6z',
+  globe: 'M12 3a9 9 0 100 18 9 9 0 000-18zM3 12h18M12 3c3 3 3 15 0 18M12 3c-3 3-3 15 0 18',
+  cog: 'M12 15a3 3 0 100-6 3 3 0 000 6zM19.4 15a1.7 1.7 0 00.3 1.8l.1.1a2 2 0 11-2.8 2.8l-.1-.1a1.7 1.7 0 00-1.8-.3 1.7 1.7 0 00-1 1.5V21a2 2 0 11-4 0v-.1a1.7 1.7 0 00-1.1-1.5 1.7 1.7 0 00-1.8.3l-.1.1a2 2 0 11-2.8-2.8l.1-.1a1.7 1.7 0 00.3-1.8 1.7 1.7 0 00-1.5-1H3a2 2 0 110-4h.1a1.7 1.7 0 001.5-1.1 1.7 1.7 0 00-.3-1.8l-.1-.1a2 2 0 112.8-2.8l.1.1a1.7 1.7 0 001.8.3H9a1.7 1.7 0 001-1.5V3a2 2 0 114 0v.1a1.7 1.7 0 001 1.5 1.7 1.7 0 001.8-.3l.1-.1a2 2 0 112.8 2.8l-.1.1a1.7 1.7 0 00-.3 1.8V9a1.7 1.7 0 001.5 1H21a2 2 0 110 4h-.1a1.7 1.7 0 00-1.5 1z',
+  play: 'M6 4l14 8-14 8z',
+  grid: 'M4 4h7v7H4zM13 4h7v7h-7zM4 13h7v7H4zM13 13h7v7h-7z',
+};
+
+// Icono de cada categoría de ajustes.
+export const CAT_ICON = {
+  Todos: 'grid', Energía: 'bolt', Juegos: 'gamepad', Entrada: 'mouse', Visual: 'eye', Sistema: 'cpu',
+  GPU: 'gpu', Red: 'globe', Privacidad: 'shield', Servicios: 'cog', 'Acciones únicas': 'play',
 };
 
 export const icon = (name, cls = '') => svg('svg', {

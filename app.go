@@ -106,6 +106,23 @@ func (a *App) ApplyTweak(id string) string {
 	return ""
 }
 
+type OnceOutcome struct {
+	Message string `json:"message"`
+	Error   string `json:"error"`
+}
+
+// RunOnce ejecuta una acción única (botón Aplicar).
+func (a *App) RunOnce(id string) OnceOutcome {
+	if a.engine == nil {
+		return OnceOutcome{Error: a.initEr}
+	}
+	msg, err := a.engine.RunOnce(id)
+	if err != nil {
+		return OnceOutcome{Error: err.Error()}
+	}
+	return OnceOutcome{Message: msg}
+}
+
 func (a *App) RevertTweak(id string) string {
 	if a.engine == nil {
 		return a.initEr

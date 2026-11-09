@@ -70,6 +70,10 @@ export function RunCleanup(arg1) {
   return window['go']['main']['App']['RunCleanup'](arg1);
 }
 
+export function RunOnce(arg1) {
+  return window['go']['main']['App']['RunOnce'](arg1);
+}
+
 export function ScanCleanup() {
   return window['go']['main']['App']['ScanCleanup']();
 }

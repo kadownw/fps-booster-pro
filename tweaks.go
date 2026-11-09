@@ -43,6 +43,8 @@ type Tweak struct {
 	Nvidia []NvSetting `json:"nvidia,omitempty"`
 	// Cmd: ajustes que Windows solo permite cambiar con un comando (p. ej. hibernación).
 	Cmd *CmdSpec `json:"-"`
+	// Once: acción que se ejecuta una vez y no deja nada que revertir (botón «Aplicar», sin interruptor).
+	Once bool `json:"once,omitempty"`
 }
 
 // CmdSpec: comando permitido (solo powercfg) con su estado observable en el registro.

@@ -41,6 +41,14 @@ func paragonCatalog() []Tweak {
 			},
 		},
 		{
+			ID: "retrim_ssd", Title: "Ejecutar TRIM ahora en los SSD", Category: "Acciones únicas", Admin: true, Once: true,
+			Description: "Le avisa a cada SSD qué bloques están libres (defrag /L). No modifica tus datos ni se puede deshacer; los discos HDD se omiten.",
+		},
+		{
+			ID: "flush_dns", Title: "Vaciar la caché de DNS", Category: "Acciones únicas", Admin: true, Once: true,
+			Description: "Borra los nombres de sitios guardados; Windows los vuelve a resolver solo. Útil si un sitio o servidor no carga. No se puede deshacer, pero es inocuo.",
+		},
+		{
 			ID: "trim_on", Title: "Asegurar TRIM en SSD", Category: "Sistema", Admin: true,
 			Description: "Garantiza que Windows envíe TRIM a los SSD (DisableDeleteNotification = 0), lo que mantiene el rendimiento de escritura a largo plazo. Es el valor por defecto; corrige equipos donde se desactivó.",
 			Changes:     []RegChange{dw("HKLM", `SYSTEM\CurrentControlSet\Control\FileSystem`, "DisableDeleteNotification", 0)},

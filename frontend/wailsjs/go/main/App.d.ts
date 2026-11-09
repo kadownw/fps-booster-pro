@@ -36,6 +36,8 @@ export function RevertTweak(arg1:string):Promise<string>;
 
 export function RunCleanup(arg1:Array<string>):Promise<main.CleanOutcome>;
 
+export function RunOnce(arg1:string):Promise<main.OnceOutcome>;
+
 export function ScanCleanup():Promise<Array<main.CleanItem>>;
 
 export function SetSimulation(arg1:boolean):Promise<void>;

@@ -16,7 +16,7 @@ func TestCatalogIsConsistent(t *testing.T) {
 		if tw.Title == "" || tw.Description == "" || tw.Category == "" {
 			t.Errorf("%s: faltan textos", tw.ID)
 		}
-		if !tw.Power && len(tw.Changes) == 0 && len(tw.Tasks) == 0 && len(tw.Nvidia) == 0 && tw.Cmd == nil {
+		if !tw.Power && len(tw.Changes) == 0 && len(tw.Tasks) == 0 && len(tw.Nvidia) == 0 && tw.Cmd == nil && !tw.Once {
 			t.Errorf("%s: sin cambios", tw.ID)
 		}
 		usesHKLM := false

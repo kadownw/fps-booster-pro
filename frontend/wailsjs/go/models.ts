@@ -184,6 +184,20 @@ export namespace main {
 		    return a;
 		}
 	}
+	export class OnceOutcome {
+	    message: string;
+	    error: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new OnceOutcome(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.message = source["message"];
+	        this.error = source["error"];
+	    }
+	}
 	export class Profile {
 	    id: string;
 	    title: string;
@@ -348,10 +362,12 @@ export namespace main {
 	    changes: RegChange[];
 	    planId?: string;
 	    nvidia?: NvSetting[];
+	    once?: boolean;
 	    active: boolean;
 	    canUndo: boolean;
 	    blocked: boolean;
 	    disabled: boolean;
+	    lastRun?: string;
 	
 	    static createFrom(source: any = {}) {
 	        return new TweakView(source);
@@ -374,10 +390,12 @@ export namespace main {
 	        this.changes = this.convertValues(source["changes"], RegChange);
 	        this.planId = source["planId"];
 	        this.nvidia = this.convertValues(source["nvidia"], NvSetting);
+	        this.once = source["once"];
 	        this.active = source["active"];
 	        this.canUndo = source["canUndo"];
 	        this.blocked = source["blocked"];
 	        this.disabled = source["disabled"];
+	        this.lastRun = source["lastRun"];
 	    }
 	
 		convertValues(a: any, classs: any, asMap: boolean = false): any {

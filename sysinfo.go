@@ -131,6 +131,8 @@ func supported(t Tweak) bool {
 		return false
 	}
 	switch {
+	case t.Once:
+		return true
 	case t.Power && t.PlanID == "":
 		return schemeExists(schemeHighPerf) // otras herramientas a veces borran los planes estándar
 	case t.Power:

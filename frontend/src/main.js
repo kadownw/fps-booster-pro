@@ -4,9 +4,9 @@ import {
   SetSimulation, GetSimulation, RelaunchAsAdmin, InitError,
   ListProfiles, ApplyProfile, CreateRestorePoint,
   ScanCleanup, RunCleanup, ListStartup, SetStartup,
-  CurrentGame, ListSessions, ClearSessions,
+  CurrentGame, ListSessions, ClearSessions, RunOnce,
 } from '../wailsjs/go/main/App';
-import { h, svg, icon, fmtBytes, fmtDuration, zone, worst, GLOW, colorAt } from './lib.js';
+import { h, svg, icon, fmtBytes, fmtDuration, zone, worst, GLOW, colorAt, CAT_ICON } from './lib.js';
 import { tickGauge } from './gauge.js';
 import { lineChart, barChart } from './chart.js';
 
@@ -71,22 +71,54 @@ function systemDisk(l) {
 
 // ---------- ajustes ----------
 const RISK = { safe: 'Seguro', moderate: 'Moderado' };
+const BRAND = { nvidia: 'NVIDIA', amd: 'AMD', intel: 'Intel' };
+const brandOf = (t) => t.vendor || (t.nvidia && t.nvidia.length ? 'nvidia' : '');
+const catIco = (c) => h('div', { class: 'cat-ico', 'data-cat': c }, icon(CAT_ICON[c] || 'cog'));
+const fmtWhen = (iso) => new Date(iso).toLocaleString('es-AR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' });
+
+async function runOnceFlow(t) {
+  if (S.busy) return;
+  const r = await dialog(t.title, [h('p', {}, t.description), h('p', { class: 'warn' }, 'Se ejecuta una sola vez y no se puede deshacer.')], { ok: 'Aplicar' });
+  if (!r.ok) return;
+  S.busy = true; paintState();
+  try {
+    const res = await RunOnce(t.id);
+    if (res.error) toast(res.error, 'err'); else toast(res.message || 'Listo', 'ok');
+  } catch (e) {
+    toast(String(e), 'err');
+  } finally {
+    S.busy = false;
+    await refresh();
+  }
+}
 
 function buildRow(t) {
-  const input = h('input', {
-    type: 'checkbox',
-    onchange: async (e) => {
-      const want = e.target.checked;
-      e.target.checked = !want;            // el estado real lo decide el motor
-      if (want && !(await ask(t.title, t.description))) return;
-      run(want ? ApplyTweak : RevertTweak, t.id, want ? 'Aplicado' : 'Revertido');
-    },
-  });
-  const tags = h('span', { class: 'tags', style: 'display:contents' });
-  const row = h('div', { class: 'tweak', style: `animation-delay:${Math.min(S.rows.size, 14) * 25}ms` },
-    h('div', { class: 'info' }, h('div', { class: 't' }, t.title, tags), h('div', { class: 'd' }, t.description)),
-    h('label', { class: 'switch' }, input, h('span')));
-  const r = { row, input, tags, t };
+  const brand = brandOf(t);
+  let input = null, btn = null, control;
+  if (t.once) {
+    btn = h('button', { class: 'primary sm', onclick: () => runOnceFlow(S.rows.get(t.id).t) }, 'Aplicar');
+    control = btn;
+  } else {
+    input = h('input', {
+      type: 'checkbox',
+      onchange: async (e) => {
+        const want = e.target.checked;
+        e.target.checked = !want;            // el estado real lo decide el motor
+        if (want && !(await ask(t.title, t.description))) return;
+        run(want ? ApplyTweak : RevertTweak, t.id, want ? 'Aplicado' : 'Revertido');
+      },
+    });
+    control = h('label', { class: 'switch' }, input, h('span'));
+  }
+  const tags = h('div', { class: 'tc-tags' });
+  const last = h('span', { class: 'tc-last' });
+  const row = h('div', { class: 'tcard', style: `animation-delay:${Math.min(S.rows.size, 12) * 20}ms` },
+    h('div', { class: 'tc-head' }, catIco(t.category), h('div', { class: 'tc-title' }, t.title),
+      brand && h('span', { class: 'vbadge ' + brand, title: `Exclusivo de ${BRAND[brand]}` }, BRAND[brand])),
+    h('div', { class: 'tc-rule' }),
+    h('p', { class: 'tc-desc' }, t.description),
+    h('div', { class: 'tc-foot' }, h('div', { class: 'tc-tags' }, tags, last), control));
+  const r = { row, input, btn, tags, last, t };
   S.rows.set(t.id, r);
   return r;
 }
@@ -95,11 +127,13 @@ function paintRow(r, t) {
   r.t = t;
   r.row.classList.toggle('on', t.active);
   r.row.classList.toggle('off', t.disabled);
-  r.input.checked = t.active;
-  r.input.disabled = S.busy || t.disabled || (t.blocked && !t.active);
+  const blocked = t.disabled || (t.blocked && !t.active);
+  if (r.input) { r.input.checked = t.active; r.input.disabled = S.busy || blocked; }
+  if (r.btn) r.btn.disabled = S.busy || t.disabled || t.blocked;
   r.row.title = t.disabled ? 'No aplica a tu equipo' : (t.blocked ? 'Requiere administrador' : '');
+  r.last.textContent = t.once && t.lastRun ? `Última vez: ${fmtWhen(t.lastRun)}` : '';
   r.tags.replaceChildren(...[
-    h('span', { class: 'tag ' + t.risk }, RISK[t.risk] || t.risk),
+    t.once ? h('span', { class: 'tag once' }, 'Una vez') : h('span', { class: 'tag ' + t.risk }, RISK[t.risk] || t.risk),
     t.admin && h('span', { class: 'tag adm' }, 'Admin'),
     t.reboot && h('span', { class: 'tag' }, 'Reinicio'),
   ].filter(Boolean));
@@ -116,10 +150,11 @@ function paintSettingsList() {
   const frag = document.createDocumentFragment();
   const cats = [...new Set(S.tweaks.filter(visible).map((t) => t.category))];
   for (const c of cats) {
-    frag.append(h('div', { class: 'section' }, h('h2', {}, c)));
-    for (const t of S.tweaks.filter((x) => x.category === c && visible(x))) frag.append(S.rows.get(t.id).row);
+    const items = S.tweaks.filter((x) => x.category === c && visible(x));
+    frag.append(h('div', { class: 'section' }, catIco(c), h('h2', {}, c), h('span', { class: 'count' }, items.length)));
+    frag.append(h('div', { class: 'tgrid' }, items.map((t) => S.rows.get(t.id).row)));
   }
-  if (!cats.length) frag.append(h('p', { class: 'k', style: 'padding:30px 0;text-align:center' }, 'Nada coincide con tu búsqueda.'));
+  if (!cats.length) frag.append(h('p', { class: 'dim', style: 'padding:40px 0;text-align:center' }, 'Nada coincide con tu búsqueda.'));
   el.list.replaceChildren(frag);
 }
 
@@ -129,7 +164,7 @@ function paintChips() {
   el.chips.replaceChildren(...cats.map((c) => h('button', {
     class: 'chip' + (c === S.cat ? ' on' : ''),
     onclick: () => { S.cat = c; paintChips(); paintSettingsList(); },
-  }, c, h('i', {}, c === 'Todos' ? S.tweaks.length : S.tweaks.filter((t) => t.category === c).length))));
+  }, icon(CAT_ICON[c] || 'cog'), c, h('i', {}, c === 'Todos' ? S.tweaks.length : S.tweaks.filter((t) => t.category === c).length))));
 }
 
 function paintState() {
@@ -454,7 +489,7 @@ function pageSettings() {
   el.simBanner = h('div', { class: 'banner info', hidden: true }, 'Modo simulación: no se modifica nada en tu Windows.');
   setTimeout(() => { paintChips(); paintSettingsList(); paintState(); }, 0);
   return [
-    pageHead('Optimizar', 'Cada ajuste es reversible y guarda su valor original.', el.search),
+    pageHead('Optimizar', 'Los ajustes con interruptor se pueden revertir. Las acciones únicas, no.', el.search),
     el.simBanner,
     h('div', { class: 'toolbar' }, el.chips,
       h('div', { class: 'row' }, h('label', { class: 'chk' }, el.simBox, 'Modo simulación'), el.revertAll)),
