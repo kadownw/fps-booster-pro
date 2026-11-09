@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"os"
+	"sync"
 	"syscall"
 
 	"github.com/wailsapp/wails/v2/pkg/runtime"
@@ -11,9 +12,14 @@ import (
 
 // App expone al frontend (Wails) solo lo necesario.
 type App struct {
-	ctx    context.Context
-	engine *Engine
-	initEr string
+	ctx      context.Context
+	engine   *Engine
+	initEr   string
+	games    *GameMonitor
+	stopMon  chan struct{}
+	liveMu   sync.Mutex
+	lastLive Live
+	hasLive  bool
 }
 
 func NewApp() *App {
@@ -22,17 +28,65 @@ func NewApp() *App {
 	go taskStates() // precalienta la consulta de tareas programadas (tarda ~2 s)
 	if err != nil {
 		a.initEr = err.Error()
+	} else {
+		a.games = NewGameMonitor(e.dir, a.latestLive)
 	}
 	return a
 }
 
-func (a *App) startup(ctx context.Context) { a.ctx = ctx }
+func (a *App) latestLive() (Live, bool) {
+	a.liveMu.Lock()
+	defer a.liveMu.Unlock()
+	return a.lastLive, a.hasLive
+}
+
+func (a *App) startup(ctx context.Context) {
+	a.ctx = ctx
+	if a.games != nil {
+		a.stopMon = make(chan struct{})
+		go a.games.Run(a.stopMon)
+	}
+}
+
+func (a *App) shutdown(ctx context.Context) {
+	if a.stopMon != nil {
+		close(a.stopMon)
+	}
+}
 
 func (a *App) InitError() string { return a.initEr }
 
 func (a *App) GetSystemInfo() SysInfo { return systemInfo() }
 
-func (a *App) GetLive() Live { return liveUsage() }
+func (a *App) GetLive() Live {
+	l := liveUsage()
+	enrichLive(&l)
+	a.liveMu.Lock()
+	a.lastLive, a.hasLive = l, true
+	a.liveMu.Unlock()
+	return l
+}
+
+// Detector de juegos
+func (a *App) CurrentGame() *GameSession {
+	if a.games == nil {
+		return nil
+	}
+	return a.games.Current()
+}
+
+func (a *App) ListSessions() []GameSession {
+	if a.games == nil {
+		return nil
+	}
+	return a.games.Sessions()
+}
+
+func (a *App) ClearSessions() {
+	if a.games != nil {
+		a.games.Clear()
+	}
+}
 
 func (a *App) ListTweaks() []TweakView {
 	if a.engine == nil {

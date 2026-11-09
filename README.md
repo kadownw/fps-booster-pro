@@ -5,7 +5,12 @@ Ajustes **reversibles** de Windows para juegos, en un único `.exe` (Go + Wails)
 - Detecta CPU, GPU (con VRAM), RAM y Windows, y muestra el uso en vivo.
 - 52 ajustes en 9 categorías (Energía, Juegos, Entrada, Visual, Sistema, GPU, Red, Privacidad y Servicios): registro, plan de energía, servicios, tareas programadas y loggers de diagnóstico.
 - Antes de tocar nada guarda el valor original; verifica cada cambio y hace rollback si falla.
-- Páginas: **Inicio** (perfiles de un clic: Gaming, Rápido sin admin, Privacidad; punto de restauración opcional), **Ajustes**, **Limpieza** (muestra el tamaño antes de borrar; solo carpetas temporales conocidas) e **Inicio de Windows** (activar o desactivar programas de arranque).
+- Páginas:
+  - **Inicio**: panel de salud con medidores de marcas que cambian de verde a amarillo y rojo según la carga o la temperatura (CPU, GPU, RAM, almacenamiento), atajos y perfiles de un clic (Gaming, Rápido sin admin, Privacidad) con punto de restauración opcional.
+  - **Mi PC**: gráfico en tiempo real (1 o 5 minutos) y detalle de procesador, GPU, memoria y discos.
+  - **Mis juegos**: detecta juegos (Steam, Epic, Riot, Xbox, GOG, Ubisoft, EA, Rockstar, Roblox) y guarda cada sesión con uso promedio de CPU/GPU/RAM y temperatura máxima, para comparar. No mide FPS.
+  - **Optimizar**: los 52 ajustes. **Limpieza**: muestra el tamaño antes de borrar. **Inicio de Windows**: activar o desactivar programas de arranque.
+- Datos en vivo sin drivers de terceros: contadores de Windows, `nvidia-smi` para la GPU NVIDIA. La temperatura de la CPU no se muestra porque Windows no la expone sin un driver de hardware.
 - Botón **Revertir todo** y **modo simulación** (no modifica nada).
 - No cierra procesos ni promete FPS: cada ajuste indica su riesgo y si necesita administrador o reinicio.
 - Los datos de backup y el registro de cambios quedan en `%LOCALAPPDATA%\FPSBoosterPro\`.
@@ -31,6 +36,7 @@ go test ./...          # prueba aplicar/revertir contra HKCU real y la simulaci�
 | `tweaks.go` | Catálogo de ajustes (registro / powercfg) |
 | `engine.go` | Aplicar, verificar, backup, rollback y revertir |
 | `regops.go` | Lectura/escritura de registro y powercfg (solo HKCU/HKLM, GUID validado) |
+| `telemetry.go`, `games.go` | Datos en vivo (PDH, nvidia-smi) y detector de juegos |
 | `profiles.go` | Perfiles de un clic y punto de restauración |
 | `cleanup.go` | Limpieza de temporales (lista fija, sin seguir enlaces, respeta archivos recientes) |
 | `startup.go` | Programas de inicio (StartupApproved, reversible) |

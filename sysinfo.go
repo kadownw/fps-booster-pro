@@ -2,6 +2,7 @@ package main
 
 import (
 	"fmt"
+	"os"
 	"runtime"
 	"strconv"
 	"strings"
@@ -41,12 +42,14 @@ func memory() (total, avail uint64, load uint32) {
 }
 
 type SysInfo struct {
-	CPU     string   `json:"cpu"`
-	Cores   int      `json:"cores"`
-	GPUs    []string `json:"gpus"`
-	RAMGB   float64  `json:"ramGB"`
-	Windows string   `json:"windows"`
-	Admin   bool     `json:"admin"`
+	CPU     string    `json:"cpu"`
+	Cores   int       `json:"cores"`
+	GPUs    []string  `json:"gpus"`
+	RAMGB   float64   `json:"ramGB"`
+	Windows string    `json:"windows"`
+	Admin   bool      `json:"admin"`
+	User    string    `json:"user"`
+	CPUInfo CPUDetail `json:"cpuInfo"`
 }
 
 func regString(root registry.Key, path, name string) string {
@@ -149,14 +152,35 @@ func systemInfo() SysInfo {
 		RAMGB:   float64(total) / (1 << 30),
 		Windows: windowsName(),
 		Admin:   isAdmin(),
+		User:    os.Getenv("USERNAME"),
+		CPUInfo: cpuDetailWithBase(),
 	}
+}
+
+func runtimeCPUs() int { return runtime.NumCPU() }
+
+func cpuDetailWithBase() CPUDetail {
+	d := cpuDetail()
+	if k, err := registry.OpenKey(registry.LOCAL_MACHINE, cpuKeyPath, registry.QUERY_VALUE); err == nil {
+		if v, _, err := k.GetIntegerValue("~MHz"); err == nil {
+			d.BaseMHz = int(v)
+		}
+		k.Close()
+	}
+	return d
 }
 
 // ---- uso en vivo ----
 
 type Live struct {
-	CPU float64 `json:"cpu"`
-	RAM float64 `json:"ram"`
+	CPU      float64    `json:"cpu"`
+	RAM      float64    `json:"ram"`
+	RAMUsed  float64    `json:"ramUsedGB"`
+	RAMTotal float64    `json:"ramTotalGB"`
+	CPUMHz   int        `json:"cpuMHz"`
+	DiskBusy float64    `json:"diskBusy"`
+	Disks    []DiskInfo `json:"disks"`
+	GPU      *GPULive   `json:"gpu"`
 }
 
 var (
@@ -182,6 +206,6 @@ func liveUsage() Live {
 		}
 	}
 	prevIdle, prevK, prevU = i, k, u
-	_, _, load := memory()
-	return Live{CPU: cpu, RAM: float64(load)}
+	total, avail, load := memory()
+	return Live{CPU: cpu, RAM: float64(load), RAMTotal: float64(total) / (1 << 30), RAMUsed: float64(total-avail) / (1 << 30)}
 }

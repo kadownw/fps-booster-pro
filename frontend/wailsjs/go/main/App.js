@@ -10,8 +10,16 @@ export function ApplyTweak(arg1) {
   return window['go']['main']['App']['ApplyTweak'](arg1);
 }
 
+export function ClearSessions() {
+  return window['go']['main']['App']['ClearSessions']();
+}
+
 export function CreateRestorePoint() {
   return window['go']['main']['App']['CreateRestorePoint']();
+}
+
+export function CurrentGame() {
+  return window['go']['main']['App']['CurrentGame']();
 }
 
 export function GetLive() {
@@ -32,6 +40,10 @@ export function InitError() {
 
 export function ListProfiles() {
   return window['go']['main']['App']['ListProfiles']();
+}
+
+export function ListSessions() {
+  return window['go']['main']['App']['ListSessions']();
 }
 
 export function ListStartup() {

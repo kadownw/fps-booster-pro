@@ -4,64 +4,29 @@ import {
   SetSimulation, GetSimulation, RelaunchAsAdmin, InitError,
   ListProfiles, ApplyProfile, CreateRestorePoint,
   ScanCleanup, RunCleanup, ListStartup, SetStartup,
+  CurrentGame, ListSessions, ClearSessions,
 } from '../wailsjs/go/main/App';
-
-const NS = 'http://www.w3.org/2000/svg';
-
-// ---------- helpers de DOM (sin innerHTML: los textos nunca se interpretan como HTML) ----------
-function h(tag, props = {}, ...kids) {
-  const el = document.createElement(tag);
-  for (const [k, v] of Object.entries(props || {})) {
-    if (v === false || v == null) continue;
-    if (k === 'class') el.className = v;
-    else if (k.startsWith('on')) el.addEventListener(k.slice(2), v);
-    else if (k === 'style') el.style.cssText = v;
-    else el[k] = v;
-  }
-  append(el, kids);
-  return el;
-}
-function append(el, kids) {
-  for (const kid of kids.flat(Infinity)) {
-    if (kid === null || kid === undefined || kid === false) continue;
-    el.append(kid instanceof Node ? kid : document.createTextNode(String(kid)));
-  }
-}
-function svg(tag, attrs = {}, ...kids) {
-  const el = document.createElementNS(NS, tag);
-  for (const [k, v] of Object.entries(attrs)) el.setAttribute(k, v);
-  append(el, kids);
-  return el;
-}
-const icon = (d) => svg('svg', { viewBox: '0 0 24 24', fill: 'none', stroke: 'currentColor', 'stroke-width': 1.8, 'stroke-linecap': 'round', 'stroke-linejoin': 'round', class: 'ico' }, svg('path', { d }));
-const ICONS = {
-  home: 'M3 11l9-8 9 8M5 10v10h5v-6h4v6h5V10',
-  sliders: 'M4 6h10M18 6h2M4 12h4M12 12h8M4 18h12M20 18h0M14 4v4M8 10v4M16 16v4',
-  trash: 'M4 7h16M9 7V4h6v3M6 7l1 13h10l1-13M10 11v6M14 11v6',
-  rocket: 'M5 15c-1 1-2 4-2 6 2 0 5-1 6-2M14 4c3-1 6-1 7-1 0 1 0 4-1 7l-7 7-6-6zM15 9h0',
-};
-const fmtBytes = (n) => {
-  if (n < 1024) return `${n} B`;
-  const u = ['KB', 'MB', 'GB', 'TB']; let i = -1;
-  do { n /= 1024; i++; } while (n >= 1024 && i < u.length - 1);
-  return `${n.toFixed(n >= 100 ? 0 : 1)} ${u[i]}`;
-};
+import { h, svg, icon, fmtBytes, fmtDuration, zone, worst, GLOW, colorAt } from './lib.js';
+import { tickGauge } from './gauge.js';
+import { lineChart, barChart } from './chart.js';
 
 // ---------- estado ----------
+const HIST_MAX = 150;                       // 150 muestras x 2 s = 5 minutos
 const S = {
   info: null, tweaks: [], profiles: [], cat: 'Todos', q: '', sim: false, busy: false, page: 'home',
-  rows: new Map(), clean: null, startup: null, live: { cpu: 0, ram: 0 },
+  rows: new Map(), clean: null, startup: null, live: null, game: null,
+  hist: { cpu: [], ram: [], gpu: [], disk: [] }, range: 30, visible: { cpu: true, ram: true, gpu: true, disk: false },
 };
 const el = {};
+let paintLiveFns = [];                     // funciones de la página actual que se repintan con cada muestra
 
-// ---------- toasts y modal ----------
+// ---------- toasts y diálogos ----------
 const toasts = h('div', { class: 'toasts' });
 function toast(msg, kind = '') {
   const t = h('div', { class: 'toast ' + kind }, msg);
   toasts.append(t);
   setTimeout(() => { t.style.transition = 'opacity .3s'; t.style.opacity = '0'; setTimeout(() => t.remove(), 300); }, kind === 'err' ? 6500 : 2600);
 }
-// ask(): confirma. `body` puede ser texto o nodos; `check` agrega una casilla opcional (devuelve {ok, checked}).
 function dialog(title, body, { ok = 'Aceptar', cancel = 'Cancelar', check = null, danger = false } = {}) {
   return new Promise((resolve) => {
     let chk = null;
@@ -81,23 +46,27 @@ function dialog(title, body, { ok = 'Aceptar', cancel = 'Cancelar', check = null
 }
 const ask = async (title, body, ok = 'Aplicar') => (await dialog(title, [h('p', {}, body), h('p', {}, 'Se guarda el valor original y podés revertirlo cuando quieras.')], { ok })).ok;
 
-// ---------- gauge ----------
-function gauge(id, label) {
-  const R = 30, C = 2 * Math.PI * R;
-  const fg = svg('circle', { class: 'fg', cx: 37, cy: 37, r: R, fill: 'none', 'stroke-width': 7, 'stroke-dasharray': C, 'stroke-dashoffset': C });
-  const s = svg('svg', { viewBox: '0 0 74 74' },
-    svg('defs', {}, svg('linearGradient', { id: 'g' + id, x1: 0, y1: 0, x2: 1, y2: 1 },
-      svg('stop', { offset: '0', 'stop-color': '#6c8cff' }), svg('stop', { offset: '1', 'stop-color': '#9b6cff' }))),
-    svg('circle', { class: 'bg', cx: 37, cy: 37, r: R, fill: 'none', 'stroke-width': 7 }), fg);
-  fg.style.stroke = `url(#g${id})`;
-  const num = h('div', { class: 'num' }, '–');
-  el[id] = { fg, num, C };
-  return h('div', { class: 'glass gauge' }, s, h('div', {}, h('div', { class: 'k' }, label), num));
+// ---------- salud y estados ----------
+const ZONES = { temp: [70, 85], cpu: [75, 92], ram: [78, 90], disk: [80, 92] };
+
+function health(l) {
+  let score = 100; const issues = [];
+  if (!l) return { score: 100, issues };
+  if (l.ram > 90) { score -= 20; issues.push('La RAM está casi llena'); } else if (l.ram > 80) { score -= 8; issues.push('Mucha RAM en uso'); }
+  if (l.cpu > 95) { score -= 10; issues.push('La CPU está al límite'); }
+  if (l.gpu && l.gpu.temp >= 85) { score -= 25; issues.push('La GPU está muy caliente'); } else if (l.gpu && l.gpu.temp >= 75) { score -= 10; issues.push('La GPU está caliente'); }
+  for (const d of l.disks || []) {
+    const free = 100 - d.usedPct;
+    if (free < 10) { score -= 15; issues.push(`${d.letter} casi sin espacio`); } else if (free < 20) { score -= 5; issues.push(`${d.letter} con poco espacio`); }
+  }
+  return { score: Math.max(0, score), issues };
 }
-function setGauge(id, v) {
-  const g = el[id]; if (!g || !g.fg.isConnected) return;
-  g.fg.setAttribute('stroke-dashoffset', g.C * (1 - Math.min(100, Math.max(0, v)) / 100));
-  g.num.textContent = Math.round(v) + '%';
+const healthState = (s) => (s >= 85 ? 'cool' : s >= 60 ? 'warm' : 'hot');
+const healthText = (s) => (s >= 85 ? 'Bueno' : s >= 60 ? 'Atención' : 'Crítico');
+
+function systemDisk(l) {
+  const ds = (l && l.disks) || [];
+  return ds.find((d) => d.letter === 'C:') || ds[0] || null;
 }
 
 // ---------- ajustes ----------
@@ -165,15 +134,15 @@ function paintChips() {
 
 function paintState() {
   for (const t of S.tweaks) { const r = S.rows.get(t.id); if (r) paintRow(r, t); }
-  if (el.revertAll) {
+  if (el.revertAll && el.revertAll.isConnected) {
     el.revertAll.disabled = S.busy || !S.tweaks.some((t) => t.canUndo);
     el.simBox.disabled = S.busy;
     el.simBox.checked = S.sim;
-    el.busy.hidden = !S.busy;
   }
+  el.busy.hidden = !S.busy;
   if (el.simBanner) el.simBanner.hidden = !S.sim;
   if (el.adminBanner) el.adminBanner.hidden = !(S.info && !S.info.admin && S.tweaks.some((t) => t.blocked));
-  if (el.activeCount) el.activeCount.textContent = `${S.tweaks.filter((t) => t.active).length} de ${S.tweaks.filter((t) => !t.disabled).length}`;
+  if (el.activeCount && el.activeCount.isConnected) el.activeCount.textContent = `${S.tweaks.filter((t) => t.active).length} de ${S.tweaks.filter((t) => !t.disabled).length}`;
   document.querySelectorAll('[data-needbusy]').forEach((b) => { b.disabled = S.busy; });
 }
 
@@ -249,56 +218,246 @@ async function makeRestorePoint() {
   } finally { S.busy = false; paintState(); }
 }
 
+const revertAllFlow = async () => {
+  if ((await dialog('Revertir todo', 'Todos los ajustes aplicados vuelven a sus valores originales.', { ok: 'Revertir', danger: true })).ok) run(RevertAll, undefined, 'Todo revertido');
+};
+
+// ---------- tarjetas de hardware ----------
+function hwCard({ ico, title, sub, to, gauge, stats }) {
+  return h('div', { class: 'glass hw' },
+    h('div', { class: 'hw-l' },
+      h('div', { class: 'hw-ico' }, icon(ico)),
+      h('div', { class: 'hw-t' }, title),
+      h('div', { class: 'hw-s', title: sub }, sub),
+      h('div', { class: 'hw-stats' }, stats),
+      h('button', { class: 'ghost', onclick: () => go(to) }, 'Ver más')),
+    h('div', { class: 'hw-g' }, gauge.el));
+}
+
+const stat = (k, v) => h('div', {}, h('span', {}, k), h('b', {}, v));
+
 // ---------- páginas ----------
+function pageHead(title, sub, right) {
+  return h('div', { class: 'top' }, h('div', {}, h('h1', {}, title), h('p', {}, sub)), right);
+}
+
 function pageHome() {
   const i = S.info;
-  const spec = h('div', { class: 'glass spec spec-card' },
-    ...[['CPU', `${i.cpu || 'Desconocido'} · ${i.cores} hilos`], ['GPU', (i.gpus || []).join(' / ') || 'No detectada'],
-        ['RAM', `${i.ramGB.toFixed(1)} GB`], ['Windows', i.windows]]
-      .map(([k, v]) => h('div', {}, h('span', { class: 'k' }, k), h('b', {}, v))));
+  const gCPU = tickGauge({ size: 150 }), gGPU = tickGauge({ size: 150 }), gRAM = tickGauge({ size: 150 }), gDSK = tickGauge({ size: 150 });
+  const cpuStats = h('div', { class: 'stats-mini' }), gpuStats = h('div', { class: 'stats-mini' });
+  const ramStats = h('div', { class: 'stats-mini' }), dskStats = h('div', { class: 'stats-mini' });
+  const hFill = h('div', { class: 'hbar-fill' }), hVal = h('div', { class: 'hbar-val' }), hChip = h('div', { class: 'hchip' });
+  const hIssues = h('ul', { class: 'hissues' });
   el.activeCount = h('b', {}, '–');
+
+  const cards = [
+    hwCard({ ico: 'cpu', title: 'Procesador', sub: i.cpu || 'Desconocido', to: 'pc', gauge: gCPU, stats: cpuStats }),
+    hwCard({ ico: 'gpu', title: 'Tarjeta de video', sub: (i.gpus || [])[0] || 'No detectada', to: 'pc', gauge: gGPU, stats: gpuStats }),
+    hwCard({ ico: 'ram', title: 'Memoria RAM', sub: `${i.ramGB.toFixed(1)} GB instalados`, to: 'pc', gauge: gRAM, stats: ramStats }),
+    hwCard({ ico: 'disk', title: 'Almacenamiento', sub: 'Unidad del sistema', to: 'pc', gauge: gDSK, stats: dskStats }),
+  ];
+
+  const repaint = () => {
+    const l = S.live; if (!l) return;
+    const g = l.gpu;
+    gCPU.set({ frac: l.cpu / 100, state: zone(l.cpu, ZONES.cpu), text: Math.round(l.cpu), unitText: '%', labelText: 'En uso' });
+    cpuStats.replaceChildren(stat('Frecuencia', l.cpuMHz ? `${(l.cpuMHz / 1000).toFixed(2)} GHz` : '–'), stat('Núcleos', `${i.cpuInfo?.cores || '–'} / ${i.cpuInfo?.threads || i.cores} hilos`));
+    if (g && g.temp >= 0) {
+      gGPU.set({ frac: g.temp / 100, state: zone(g.temp, ZONES.temp), text: g.temp, unitText: '°C', labelText: 'Temperatura' });
+      gpuStats.replaceChildren(stat('Uso', `${g.util}%`), stat('VRAM', `${(g.vramUsed / 1024).toFixed(1)} / ${(g.vramTotal / 1024).toFixed(0)} GB`));
+    } else {
+      gGPU.set({ frac: null, text: '–', labelText: 'Sin datos' });
+      gpuStats.replaceChildren(h('div', { class: 'dim' }, 'Temperatura y uso disponibles solo en NVIDIA.'));
+    }
+    gRAM.set({ frac: l.ram / 100, state: zone(l.ram, ZONES.ram), text: Math.round(l.ram), unitText: '%', labelText: 'En uso' });
+    ramStats.replaceChildren(stat('Usada', `${l.ramUsedGB.toFixed(1)} GB`), stat('Libre', `${(l.ramTotalGB - l.ramUsedGB).toFixed(1)} GB`));
+    const d = systemDisk(l);
+    if (d) {
+      gDSK.set({ frac: d.usedPct / 100, state: zone(d.usedPct, ZONES.disk), text: Math.round(d.usedPct), unitText: '%', labelText: `Usado · ${d.letter}` });
+      dskStats.replaceChildren(stat('Libre', `${d.freeGB.toFixed(0)} GB`), stat('Actividad', `${Math.round(l.diskBusy)}%`));
+    }
+    const hl = health(l), st = healthState(hl.score);
+    hFill.style.height = hl.score + '%';
+    hFill.style.background = `linear-gradient(0deg, ${colorAt(st, 0)}, ${colorAt(st, 1)})`;
+    hVal.textContent = hl.score + '%';
+    hChip.textContent = healthText(hl.score);
+    hChip.className = 'hchip ' + st;
+    hIssues.replaceChildren(...(hl.issues.length ? hl.issues.map((x) => h('li', {}, x)) : [h('li', { class: 'ok' }, 'Todo en orden')]));
+  };
+  paintLiveFns = [repaint];
+  setTimeout(repaint, 0);
+
+  const tile = (ico, title, sub, onclick) => h('button', { class: 'tile', onclick },
+    h('div', { class: 'tile-ico' }, icon(ico)), h('div', { class: 'tile-t' }, h('b', {}, title), h('span', {}, sub)), icon('chevron', 'tile-go'));
+  const gaming = () => S.profiles.find((p) => p.id === 'gaming');
+
   const profileCards = S.profiles.map((p) => h('div', { class: 'glass pcard' },
     h('div', { class: 'ptop' }, h('h3', {}, p.title), p.needsAdmin && h('span', { class: 'tag adm' }, 'Admin')),
     h('p', { class: 'd' }, p.description),
     h('div', { class: 'row-end' }, h('span', { class: 'k' }, `${p.tweaks.length} ajustes`),
       h('button', { class: 'primary', 'data-needbusy': 1, onclick: () => applyProfile(p) }, 'Aplicar'))));
+
   return [
-    pageHead('Inicio', 'Estado de tu equipo y optimización rápida.'),
-    h('div', { class: 'stats' }, gauge('cpu', 'CPU'), gauge('ram', 'RAM'), spec),
-    h('div', { class: 'section' }, h('h2', {}, 'Optimización rápida')),
+    h('div', { class: 'top' },
+      h('div', {}, h('h1', {}, `Bienvenido${i.user ? ', ' + i.user : ''}`), h('p', {}, '¿Cómo anda tu PC hoy?')),
+      h('div', { class: 'row' }, h('button', { onclick: () => go('pc') }, 'Ver mi PC'), h('button', { class: 'primary', onclick: () => gaming() && applyProfile(gaming()) }, 'Optimizar con un clic'))),
+    h('div', { class: 'dash' },
+      h('div', { class: 'glass health' },
+        h('div', { class: 'k' }, 'Salud'), hChip,
+        h('div', { class: 'hbar' }, hFill), hVal, hIssues),
+      h('div', { class: 'hwgrid' }, cards)),
+    h('div', { class: 'tiles' },
+      tile('chart', 'Analizar mi PC', 'Uso en tiempo real', () => go('pc')),
+      tile('bolt', 'Optimizar con un clic', 'Perfil Gaming', () => gaming() && applyProfile(gaming())),
+      tile('trash', 'Limpiar archivos', 'Liberá espacio', () => go('clean')),
+      tile('gamepad', 'Mis juegos', 'Detector y sesiones', () => go('games')),
+      tile('rocket', 'Programas de inicio', 'Arranque más rápido', () => go('startup')),
+      tile('restore', 'Punto de restauración', 'Antes de cambiar nada', makeRestorePoint)),
+    h('div', { class: 'section' }, h('h2', {}, 'Perfiles de optimización')),
     h('div', { class: 'pgrid' }, profileCards),
     h('div', { class: 'section' }, h('h2', {}, 'Seguridad')),
     h('div', { class: 'glass safety' },
       h('div', {}, h('b', {}, 'Todo es reversible'),
         h('p', { class: 'd' }, 'Cada ajuste guarda su valor original antes de aplicarse. Además podés crear un punto de restauración de Windows antes de empezar.'),
         h('p', { class: 'd' }, 'Ajustes activos: ', el.activeCount)),
-      h('div', { class: 'row' }, h('button', { 'data-needbusy': 1, onclick: makeRestorePoint }, 'Crear punto de restauración'),
-        h('button', { class: 'danger', 'data-needbusy': 1, onclick: async () => {
-          if ((await dialog('Revertir todo', 'Todos los ajustes aplicados vuelven a sus valores originales.', { ok: 'Revertir', danger: true })).ok) run(RevertAll, undefined, 'Todo revertido');
-        } }, 'Revertir todo'))),
+      h('div', { class: 'row' }, h('button', { class: 'danger', 'data-needbusy': 1, onclick: revertAllFlow }, 'Revertir todo'))),
   ];
 }
 
-function pageHead(title, sub, right) {
-  return h('div', { class: 'top' }, h('div', {}, h('h1', {}, title), h('p', {}, sub)), right);
+function pagePC() {
+  const i = S.info;
+  const series = [
+    { key: 'cpu', label: 'CPU', color: '#2fe3a2' }, { key: 'gpu', label: 'GPU', color: '#6c8cff' },
+    { key: 'ram', label: 'RAM', color: '#f6c945' }, { key: 'disk', label: 'Disco', color: '#ff7a8a' },
+  ];
+  const chart = lineChart({ series, height: 250 });
+  const legend = h('div', { class: 'legend' });
+  const rangeBtns = h('div', { class: 'seg' });
+  const detail = h('div', { class: 'detail-grid' });
+  const gCPU = tickGauge({ size: 150 });
+  const gGPU = tickGauge({ size: 150 });
+  const cpuSub = h('div', { class: 'gsub' }), gpuSub = h('div', { class: 'gsub' });
+
+  const drawChart = () => {
+    const data = {};
+    for (const k of Object.keys(S.hist)) data[k] = S.hist[k].slice(-S.range);
+    chart.update(data, S.visible);
+  };
+  const drawLegend = () => legend.replaceChildren(...series.map((s) => h('button', {
+    class: 'lg' + (S.visible[s.key] ? ' on' : ''), onclick: () => { S.visible[s.key] = !S.visible[s.key]; drawLegend(); drawChart(); },
+  }, h('i', { style: `background:${s.color}` }), s.label,
+    h('b', {}, S.hist[s.key].length ? `${S.hist[s.key].at(-1).toFixed(0)}%` : '–'))));
+  const drawRange = () => rangeBtns.replaceChildren(...[[30, '1 min'], [150, '5 min']].map(([n, t]) => h('button', {
+    class: S.range === n ? 'on' : '', onclick: () => { S.range = n; drawRange(); drawChart(); },
+  }, t)));
+  drawRange(); drawLegend();
+
+  const row = (k, v) => h('div', { class: 'kv' }, h('span', {}, k), h('b', {}, v));
+  const repaint = () => {
+    const l = S.live; if (!l) return;
+    const g = l.gpu;
+    drawChart(); drawLegend();
+    gCPU.set({ frac: l.cpu / 100, state: zone(l.cpu, ZONES.cpu), text: Math.round(l.cpu), unitText: '%', labelText: 'Uso de CPU' });
+    if (g && g.temp >= 0) gGPU.set({ frac: g.temp / 100, state: zone(g.temp, ZONES.temp), text: g.temp, unitText: '°C', labelText: 'Temp. GPU' });
+    else gGPU.set({ frac: null, text: '–', labelText: 'Sin datos' });
+    const ci = i.cpuInfo || {};
+    cpuSub.textContent = l.cpuMHz ? `${(l.cpuMHz / 1000).toFixed(2)} GHz · ${ci.cores || i.cores} núcleos` : '';
+    gpuSub.textContent = g ? `Uso ${g.util}% · ${(g.vramUsed / 1024).toFixed(1)} GB VRAM` : 'Solo NVIDIA';
+    detail.replaceChildren(
+      h('div', { class: 'glass dcard' }, h('div', { class: 'dhead' }, icon('cpu'), h('b', {}, 'Procesador')), h('div', { class: 'dsub' }, i.cpu),
+        row('Núcleos / hilos', `${ci.cores || '–'} / ${ci.threads || i.cores}`),
+        row('Frecuencia actual', l.cpuMHz ? `${(l.cpuMHz / 1000).toFixed(2)} GHz` : '–'),
+        row('Frecuencia base', ci.baseMHz ? `${(ci.baseMHz / 1000).toFixed(2)} GHz` : '–'),
+        row('Caché L2', ci.l2KB ? `${(ci.l2KB / 1024).toFixed(ci.l2KB % 1024 ? 1 : 0)} MB` : '–'),
+        row('Caché L3', ci.l3KB ? `${(ci.l3KB / 1024).toFixed(ci.l3KB % 1024 ? 1 : 0)} MB` : '–'),
+        h('div', { class: 'dim', style: 'margin-top:8px' }, 'La temperatura de la CPU no se muestra: Windows no la expone sin un driver de hardware.')),
+      h('div', { class: 'glass dcard' }, h('div', { class: 'dhead' }, icon('gpu'), h('b', {}, 'Tarjeta de video')), h('div', { class: 'dsub' }, g ? g.name : (i.gpus || [])[0] || 'No detectada'),
+        g ? [row('Temperatura', g.temp >= 0 ? `${g.temp} °C` : '–'), row('Uso', `${g.util}%`),
+          row('VRAM', `${(g.vramUsed / 1024).toFixed(1)} / ${(g.vramTotal / 1024).toFixed(0)} GB`),
+          row('Reloj del núcleo', `${g.clock} / ${g.clockMax} MHz`), row('Consumo', g.power >= 0 ? `${g.power.toFixed(0)} W` : '–'),
+          row('Ventilador', g.fan >= 0 ? `${g.fan}%` : '–'), row('Driver', g.driver)]
+          : h('div', { class: 'dim' }, 'Los datos en vivo de la GPU están disponibles para tarjetas NVIDIA.')),
+      h('div', { class: 'glass dcard' }, h('div', { class: 'dhead' }, icon('ram'), h('b', {}, 'Memoria')), h('div', { class: 'dsub' }, `${l.ramTotalGB.toFixed(1)} GB instalados`),
+        row('En uso', `${l.ramUsedGB.toFixed(1)} GB (${Math.round(l.ram)}%)`), row('Disponible', `${(l.ramTotalGB - l.ramUsedGB).toFixed(1)} GB`)),
+      h('div', { class: 'glass dcard' }, h('div', { class: 'dhead' }, icon('disk'), h('b', {}, 'Almacenamiento')), h('div', { class: 'dsub' }, `Actividad del disco: ${Math.round(l.diskBusy)}%`),
+        (l.disks || []).map((d) => h('div', { class: 'drive' },
+          h('div', { class: 'kv' }, h('span', {}, d.letter), h('b', {}, `${d.freeGB.toFixed(0)} GB libres de ${d.totalGB.toFixed(0)} GB`)),
+          h('div', { class: 'meter' }, h('i', { style: `width:${d.usedPct}%;background:linear-gradient(90deg,${colorAt(zone(d.usedPct, ZONES.disk), 0)},${colorAt(zone(d.usedPct, ZONES.disk), 1)})` }))))));
+  };
+  paintLiveFns = [repaint];
+  setTimeout(repaint, 0);
+
+  return [
+    pageHead('Mi PC', 'Detalle en tiempo real de tu equipo.'),
+    h('div', { class: 'pc-top' },
+      h('div', { class: 'glass g2' }, h('div', { class: 'k' }, 'CPU'), gCPU.el, cpuSub),
+      h('div', { class: 'glass g2' }, h('div', { class: 'k' }, 'GPU'), gGPU.el, gpuSub),
+      h('div', { class: 'glass chartcard' },
+        h('div', { class: 'chead' }, h('b', {}, 'Uso en tiempo real'), rangeBtns), chart.el, legend)),
+    detail,
+  ];
+}
+
+function pageGames() {
+  const cur = h('div', { class: 'glass gcur' });
+  const hist = h('div');
+  const metrics = {
+    avgCpu: { label: 'CPU promedio', unit: '%', max: 100 }, avgGpu: { label: 'GPU promedio', unit: '%', max: 100 },
+    maxGpuTemp: { label: 'Temp. máx. GPU', unit: '°C', max: 100 }, avgRam: { label: 'RAM promedio', unit: '%', max: 100 },
+  };
+  let metric = 'avgGpu', sessions = [];
+
+  const drawCur = () => {
+    const g = S.game;
+    if (!g) {
+      cur.replaceChildren(h('div', { class: 'gcur-empty' }, icon('gamepad', 'big'),
+        h('div', {}, h('b', {}, 'Ningún juego detectado'),
+          h('p', { class: 'd' }, 'Abrí un juego y lo reconozco solo (Steam, Epic, Riot, Xbox, GOG, Ubisoft, EA, Rockstar, Roblox). Mientras jugás, registro el uso de CPU, RAM y GPU.'))));
+      return;
+    }
+    cur.replaceChildren(h('div', { class: 'gcur-live' },
+      h('div', {}, h('div', { class: 'k' }, 'Jugando ahora'), h('h2', {}, g.game), h('p', { class: 'd' }, g.exe)),
+      h('div', { class: 'gstats' },
+        stat('Duración', fmtDuration(g.durationSec)), stat('CPU prom.', `${g.avgCpu.toFixed(0)}%`), stat('GPU prom.', g.samples ? `${g.avgGpu.toFixed(0)}%` : '–'),
+        stat('Temp. GPU máx.', g.maxGpuTemp ? `${g.maxGpuTemp} °C` : '–'), stat('RAM prom.', `${g.avgRam.toFixed(0)}%`))));
+  };
+  const fmtDate = (iso) => new Date(iso).toLocaleString('es-AR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' });
+  const drawHist = () => {
+    if (!sessions.length) { hist.replaceChildren(h('div', { class: 'glass empty' }, 'Todavía no hay sesiones. Se guardan al cerrar un juego que estuvo abierto más de 30 segundos.')); return; }
+    const m = metrics[metric];
+    const recent = sessions.slice(0, 12).reverse();
+    hist.replaceChildren(
+      h('div', { class: 'glass' },
+        h('div', { class: 'chead' }, h('b', {}, 'Comparar sesiones'),
+          h('div', { class: 'seg' }, Object.entries(metrics).map(([k, v]) => h('button', { class: metric === k ? 'on' : '', onclick: () => { metric = k; drawHist(); } }, v.label)))),
+        barChart({ items: recent.map((s) => ({ value: s[metric], label: s.game.length > 11 ? s.game.slice(0, 10) + '…' : s.game, title: `${s.game} · ${fmtDate(s.start)}` })), max: m.max, unit: m.unit })),
+      h('div', { class: 'section' }, h('h2', {}, 'Historial')),
+      sessions.map((s) => h('div', { class: 'tweak' },
+        h('div', { class: 'info' }, h('div', { class: 't' }, s.game), h('div', { class: 'd' }, `${fmtDate(s.start)} · ${fmtDuration(s.durationSec)}`)),
+        h('div', { class: 'srow' }, stat('CPU', `${s.avgCpu.toFixed(0)}%`), stat('GPU', s.avgGpu ? `${s.avgGpu.toFixed(0)}%` : '–'),
+          stat('Temp. máx.', s.maxGpuTemp ? `${s.maxGpuTemp} °C` : '–'), stat('RAM', `${s.avgRam.toFixed(0)}%`)))),
+      h('div', { class: 'row-end', style: 'margin-top:10px' }, h('span', { class: 'dim' }, 'Los FPS todavía no se miden: requiere PresentMon.'),
+        h('button', { class: 'danger', onclick: async () => { if ((await dialog('Borrar historial', 'Se borran todas las sesiones guardadas.', { ok: 'Borrar', danger: true })).ok) { await ClearSessions(); sessions = []; drawHist(); } } }, 'Borrar historial')));
+  };
+  const load = async () => { S.game = await CurrentGame(); sessions = (await ListSessions()) || []; if (el.content.contains(cur)) { drawCur(); drawHist(); } };
+  drawCur(); drawHist(); load();
+  paintLiveFns = [() => { CurrentGame().then((g) => { S.game = g; if (el.content.contains(cur)) drawCur(); }); }];
+  return [pageHead('Mis juegos', 'Detecto tus juegos y comparo cómo rinde tu PC en cada sesión.'), cur, h('div', { style: 'height:14px' }), hist];
 }
 
 function pageSettings() {
   el.search = h('input', { class: 'search', placeholder: 'Buscar ajustes…', value: S.q, oninput: (e) => { S.q = e.target.value; paintSettingsList(); } });
   el.chips = h('div', { class: 'chips' });
   el.list = h('div');
-  const simBox = h('input', { type: 'checkbox', checked: S.sim, onchange: async (e) => { await SetSimulation(e.target.checked); S.sim = e.target.checked; await refresh(); } });
-  el.simBox = simBox;
-  el.revertAll = h('button', { class: 'danger', onclick: async () => {
-    if ((await dialog('Revertir todo', 'Todos los ajustes aplicados vuelven a sus valores originales.', { ok: 'Revertir', danger: true })).ok) run(RevertAll, undefined, 'Todo revertido');
-  } }, 'Revertir todo');
+  el.simBox = h('input', { type: 'checkbox', checked: S.sim, onchange: async (e) => { await SetSimulation(e.target.checked); S.sim = e.target.checked; await refresh(); } });
+  el.revertAll = h('button', { class: 'danger', onclick: revertAllFlow }, 'Revertir todo');
   el.simBanner = h('div', { class: 'banner info', hidden: true }, 'Modo simulación: no se modifica nada en tu Windows.');
   setTimeout(() => { paintChips(); paintSettingsList(); paintState(); }, 0);
   return [
-    pageHead('Ajustes', 'Cada ajuste es reversible y guarda su valor original.', el.search),
+    pageHead('Optimizar', 'Cada ajuste es reversible y guarda su valor original.', el.search),
     el.simBanner,
     h('div', { class: 'toolbar' }, el.chips,
-      h('div', { class: 'row' }, h('label', { class: 'chk' }, simBox, 'Modo simulación'), el.revertAll)),
+      h('div', { class: 'row' }, h('label', { class: 'chk' }, el.simBox, 'Modo simulación'), el.revertAll)),
     el.list,
   ];
 }
@@ -377,21 +536,23 @@ function pageStartup() {
 
 const PAGES = [
   { id: 'home', label: 'Inicio', icon: 'home', render: pageHome },
-  { id: 'settings', label: 'Ajustes', icon: 'sliders', render: pageSettings },
+  { id: 'pc', label: 'Mi PC', icon: 'monitor', render: pagePC },
+  { id: 'games', label: 'Mis juegos', icon: 'gamepad', render: pageGames },
+  { id: 'settings', label: 'Optimizar', icon: 'sliders', render: pageSettings },
   { id: 'clean', label: 'Limpieza', icon: 'trash', render: pageClean },
   { id: 'startup', label: 'Inicio de Windows', icon: 'rocket', render: pageStartup },
 ];
 
 function go(id) {
   S.page = id;
-  S.startup = id === 'startup' ? null : S.startup; // siempre se relee al entrar
+  if (id === 'startup') S.startup = null;     // siempre se relee al entrar
   if (id === 'clean') S.clean = null;
-  el.nav.replaceChildren(...PAGES.map((p) => h('button', { class: 'nav' + (p.id === id ? ' on' : ''), onclick: () => go(p.id) }, icon(ICONS[p.icon]), p.label)));
+  paintLiveFns = [];
+  el.nav.replaceChildren(...PAGES.map((p) => h('button', { class: 'nav' + (p.id === id ? ' on' : ''), onclick: () => go(p.id) }, icon(p.icon), p.label)));
   const page = PAGES.find((p) => p.id === id);
   el.content.replaceChildren(h('div', { class: 'page' }, page.render()));
   el.main.scrollTo({ top: 0 });
   paintState();
-  tick();
 }
 
 // ---------- layout ----------
@@ -406,13 +567,35 @@ function build() {
     h('aside', {},
       h('div', { class: 'brand' }, h('div', { class: 'logo' }, 'FPS'), h('div', {}, h('b', {}, 'FPS Booster Pro'), h('small', {}, 'v2 · Go'))),
       el.nav,
-      h('div', { class: 'side-foot' }, h('small', { class: 'k', style: 'text-transform:none;letter-spacing:0' }, S.info.admin ? 'Ejecutando como administrador' : 'Sin permisos de administrador'))),
+      h('div', { class: 'user' }, h('div', { class: 'avatar' }, (S.info.user || '?').slice(0, 1).toUpperCase()),
+        h('div', {}, h('b', {}, S.info.user || 'Usuario'), h('small', {}, S.info.admin ? 'Administrador' : 'Sin permisos de admin')))),
     el.main);
   document.body.append(el.busy, toasts);
 }
 
+// ---------- muestras en vivo ----------
+function pushHist(l) {
+  const d = systemDisk(l);
+  const add = (k, v) => { S.hist[k].push(v); if (S.hist[k].length > HIST_MAX) S.hist[k].shift(); };
+  add('cpu', l.cpu); add('ram', l.ram); add('gpu', l.gpu ? l.gpu.util : 0); add('disk', l.diskBusy || 0);
+  void d;
+}
+
+function ambient(l) {
+  const g = l.gpu;
+  const st = worst(zone(l.cpu, ZONES.cpu), g && g.temp >= 0 ? zone(g.temp, ZONES.temp) : 'cool', zone(l.ram, ZONES.ram));
+  document.documentElement.style.setProperty('--glow', GLOW[st]);
+}
+
+let ticking = false;
 async function tick() {
-  try { const l = await GetLive(); S.live = l; setGauge('cpu', l.cpu); setGauge('ram', l.ram); } catch { /* cerrando */ }
+  if (ticking) return;
+  ticking = true;
+  try {
+    const l = await GetLive();
+    S.live = l; pushHist(l); ambient(l);
+    for (const f of paintLiveFns) f();
+  } catch { /* ventana cerrándose */ } finally { ticking = false; }
 }
 
 (async () => {
@@ -425,6 +608,7 @@ async function tick() {
   build();
   S.profiles = (await ListProfiles()) || [];
   await refresh();
+  S.live = await GetLive();
   go('home');
-  setInterval(tick, 1500);
+  setInterval(tick, 2000);
 })();

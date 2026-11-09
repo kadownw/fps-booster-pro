@@ -6,7 +6,11 @@ export function ApplyProfile(arg1:string):Promise<main.ProfileOutcome>;
 
 export function ApplyTweak(arg1:string):Promise<string>;
 
+export function ClearSessions():Promise<void>;
+
 export function CreateRestorePoint():Promise<string>;
+
+export function CurrentGame():Promise<main.GameSession>;
 
 export function GetLive():Promise<main.Live>;
 
@@ -17,6 +21,8 @@ export function GetSystemInfo():Promise<main.SysInfo>;
 export function InitError():Promise<string>;
 
 export function ListProfiles():Promise<Array<main.Profile>>;
+
+export function ListSessions():Promise<Array<main.GameSession>>;
 
 export function ListStartup():Promise<Array<main.StartupEntry>>;
 
