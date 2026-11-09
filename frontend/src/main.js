@@ -232,6 +232,13 @@ function buildRow(t) {
   const lock = h('button', { class: 'lock-cover', hidden: true, onclick: () => upgradeDialog(S.rows.get(t.id).t.title) },
     icon('lock'), h('b', {}, 'Pro Tier'), h('span', {}, 'Upgrade · próximamente'));
   row.append(lock);
+  // Las explicaciones no se ven en la lista: aparecen al poner el ajuste en la cola o, si no aplica a
+  // esta PC, al tocar la tarjeta (para saber por qué).
+  row.addEventListener('click', (ev) => {
+    if (ev.target.closest('.switch, button, input')) return;
+    const cur = S.rows.get(t.id).t;
+    if (cur.disabled) row.classList.toggle('show-why');
+  });
   const r = { row, input, btn, tags, last, t, lock, detail };
   S.rows.set(t.id, r);
   return r;
