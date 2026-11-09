@@ -3,7 +3,7 @@
 Ajustes **reversibles** de Windows para juegos, en un único `.exe` (Go + Wails). Sin Python ni runtimes: abrís y listo (usa WebView2, que ya viene con Windows 10/11).
 
 - Detecta CPU, GPU (con VRAM), RAM y Windows, y muestra el uso en vivo.
-- 16 ajustes: plan de energía, Modo Juego, Game DVR, pantalla completa, mouse, teclado, HAGS, MMCSS, red, prioridad, y por GPU (NVIDIA / AMD).
+- 31 ajustes en 8 categorías (Energía, Juegos, Entrada, Visual, Sistema, GPU, Red, Privacidad): plan de energía, Game Mode/DVR, mouse y teclado, HAGS, MMCSS, red, prioridad, GPU (NVIDIA / AMD), telemetría, Copilot y Recall, entre otros.
 - Antes de tocar nada guarda el valor original; verifica cada cambio y hace rollback si falla.
 - Botón **Revertir todo** y **modo simulación** (no modifica nada).
 - No cierra procesos ni promete FPS: cada ajuste indica su riesgo y si necesita administrador o reinicio.

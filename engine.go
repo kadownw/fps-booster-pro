@@ -134,7 +134,7 @@ func (e *Engine) List() []TweakView {
 			Active:   e.isActive(t),
 			CanUndo:  has || (e.sim && e.simApplied[t.ID]),
 			Blocked:  t.Admin && !adm && !e.sim,
-			Disabled: !t.Power && len(expand(t)) == 0,
+			Disabled: !supported(t),
 		})
 	}
 	return out
@@ -156,7 +156,7 @@ func (e *Engine) Apply(id string) (err error) {
 	if t.Admin && !isAdmin() {
 		return errNeedAdmin
 	}
-	if !t.Power && len(expand(t)) == 0 {
+	if !supported(t) {
 		return errors.New("este ajuste no aplica a tu equipo")
 	}
 	bk, had := e.st.Items[id]

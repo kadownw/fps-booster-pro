@@ -23,11 +23,12 @@ type Tweak struct {
 	Title       string      `json:"title"`
 	Description string      `json:"description"`
 	Category    string      `json:"category"`
-	Admin       bool        `json:"admin"`            // requiere permisos de administrador
-	Reboot      bool        `json:"reboot"`           // requiere reiniciar para tener efecto
-	Power       bool        `json:"power"`            // cambia el plan de energía (powercfg)
-	Vendor      string      `json:"vendor,omitempty"` // "nvidia" | "amd" | "intel": se aplica a cada GPU de ese fabricante
-	Risk        string      `json:"risk"`             // "safe" | "moderate"
+	Admin       bool        `json:"admin"`              // requiere permisos de administrador
+	Reboot      bool        `json:"reboot"`             // requiere reiniciar para tener efecto
+	Power       bool        `json:"power"`              // cambia el plan de energía (powercfg)
+	Vendor      string      `json:"vendor,omitempty"`   // "nvidia" | "amd" | "intel": se aplica a cada GPU de ese fabricante
+	Risk        string      `json:"risk"`               // "safe" | "moderate"
+	MinBuild    int         `json:"minBuild,omitempty"` // build mínima de Windows (0 = cualquiera)
 	Changes     []RegChange `json:"changes"`
 }
 
@@ -75,10 +76,12 @@ const (
 // Los ajustes de Windows del catálogo coinciden con prácticas conocidas (guías de latencia,
 // documentación de MMCSS); los valores se reimplementaron de forma independiente.
 var moderate = map[string]bool{"hags": true, "games_priority": true, "foreground_boost": true,
-	"net_throttle": true, "bg_apps": true, "nv_pstate": true, "mmcss_extra": true, "power_plan": true}
+	"net_throttle": true, "bg_apps": true, "nv_pstate": true, "mmcss_extra": true, "power_plan": true,
+	"power_throttle": true, "sticky_keys": true, "telemetry": true, "error_reporting": true,
+	"copilot": true, "ai_recall": true}
 
 func catalog() []Tweak {
-	list := rawCatalog()
+	list := append(rawCatalog(), extraCatalog()...)
 	for i := range list {
 		list[i].Risk = "safe"
 		if moderate[list[i].ID] {
@@ -144,7 +147,10 @@ func rawCatalog() []Tweak {
 		{
 			ID: "bg_apps", Title: "Bloquear apps en segundo plano", Category: "Sistema",
 			Description: "Impide que las apps de la Tienda corran en segundo plano. Libera algo de RAM y CPU. Algunas apps dejarán de notificar cuando no las uses.",
-			Changes:     []RegChange{dw("HKCU", bgApps, "GlobalUserDisabled", 1)},
+			Changes: []RegChange{
+				dw("HKCU", bgApps, "GlobalUserDisabled", 1),
+				dw("HKCU", `Software\Microsoft\Windows\CurrentVersion\Search`, "BackgroundAppGlobalToggle", 0),
+			},
 		},
 		{
 			ID: "hags", Title: "Programación de GPU acelerada por hardware", Category: "GPU", Admin: true, Reboot: true,

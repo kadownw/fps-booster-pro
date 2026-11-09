@@ -68,6 +68,7 @@ export namespace main {
 	    power: boolean;
 	    vendor?: string;
 	    risk: string;
+	    minBuild?: number;
 	    changes: RegChange[];
 	    active: boolean;
 	    canUndo: boolean;
@@ -89,6 +90,7 @@ export namespace main {
 	        this.power = source["power"];
 	        this.vendor = source["vendor"];
 	        this.risk = source["risk"];
+	        this.minBuild = source["minBuild"];
 	        this.changes = this.convertValues(source["changes"], RegChange);
 	        this.active = source["active"];
 	        this.canUndo = source["canUndo"];

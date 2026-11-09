@@ -116,6 +116,19 @@ func vendorOf(desc string) string {
 	return ""
 }
 
+func windowsBuild() int {
+	b, _ := strconv.Atoi(regString(registry.LOCAL_MACHINE, winVersionKeyPth, "CurrentBuild"))
+	return b
+}
+
+// supported indica si el tweak aplica a esta versión de Windows y a este hardware.
+func supported(t Tweak) bool {
+	if t.MinBuild > 0 && windowsBuild() < t.MinBuild {
+		return false
+	}
+	return t.Power || len(expand(t)) > 0
+}
+
 func windowsName() string {
 	name := regString(registry.LOCAL_MACHINE, winVersionKeyPth, "ProductName")
 	build := regString(registry.LOCAL_MACHINE, winVersionKeyPth, "CurrentBuild")
