@@ -1,40 +1,33 @@
-# FPS BOOSTER
+﻿# FPS Booster Pro
 
-Optimizador de rendimiento para juegos en Windows 10/11. Seguro, transparente y reversible.
+Ajustes **reversibles** de Windows para juegos, en un único `.exe` (Go + Wails). Sin Python ni runtimes: abrís y listo (usa WebView2, que ya viene con Windows 10/11).
 
-- Detecta CPU, GPU (VRAM real), RAM, discos SSD/HDD y versión de Windows.
-- Monitoreo en tiempo real de CPU, RAM, disco, red y GPU (nvidia-smi o contadores de Windows).
-- Identifica procesos de alto consumo — **nunca los cierra**.
-- Perfiles Gaming / Equilibrado / Ahorro y recomendaciones según tu hardware.
-- Cada cambio pide consentimiento, guarda el valor original y se puede revertir.
-- **No promete FPS**: toda recomendación dice "impacto no medido" hasta tener medición (fase 2).
+- Detecta CPU, GPU (con VRAM), RAM y Windows, y muestra el uso en vivo.
+- 16 ajustes: plan de energía, Modo Juego, Game DVR, pantalla completa, mouse, teclado, HAGS, MMCSS, red, prioridad, y por GPU (NVIDIA / AMD).
+- Antes de tocar nada guarda el valor original; verifica cada cambio y hace rollback si falla.
+- Botón **Revertir todo** y **modo simulación** (no modifica nada).
+- No cierra procesos ni promete FPS: cada ajuste indica su riesgo y si necesita administrador o reinicio.
+- Los datos de backup y el registro de cambios quedan en `%LOCALAPPDATA%\FPSBoosterPro\`.
 
-## Ejecutar
+## Compilar
 
-```powershell
-py -3.11 -m venv .venv
-.\.venv\Scripts\python -m pip install -r requirements-dev.txt
-$env:PYTHONPATH = "src"
-.\.venv\Scripts\python -m fps_booster              # MODO SIMULACIÓN (por defecto)
-.\.venv\Scripts\python -m fps_booster --modo-real  # aplica cambios reales, pide confirmación
-```
-
-En **modo simulación** la app lee tu configuración real pero escribe en un sistema virtual en memoria:
-podés probar todo el flujo sin tocar Windows.
-
-## Pruebas
+Requisitos: Go 1.23+, Node.js y [Wails v2](https://wails.io).
 
 ```powershell
-.\.venv\Scripts\python -m pytest -q
-.\.venv\Scripts\python -m ruff check src tests
+go install github.com/wailsapp/wails/v2/cmd/wails@latest
+wails build            # genera build\bin\fbp-go.exe
+go test ./...          # prueba aplicar/revertir contra HKCU real y la simulación
 ```
 
-## Documentación
+## Estructura
 
-- [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) — capas, flujo y estructura de carpetas
-- [docs/ROADMAP.md](docs/ROADMAP.md) — plan por fases
-- [docs/AUDIT.md](docs/AUDIT.md) — invariantes de seguridad y guía para auditar
+| Archivo | Rol |
+|---|---|
+| `tweaks.go` | Catálogo de ajustes (registro / powercfg) |
+| `engine.go` | Aplicar, verificar, backup, rollback y revertir |
+| `regops.go` | Lectura/escritura de registro y powercfg (solo HKCU/HKLM, GUID validado) |
+| `sysinfo.go` | Hardware y uso en vivo (sin PowerShell) |
+| `frontend/` | Interfaz |
+| `tools/snapshot.ps1` | Compara el sistema antes/después de aplicar un ajuste, para descubrir qué cambia |
 
-## Datos
-
-`%LOCALAPPDATA%\FPSBooster\` → `logs\app.log`, `logs\changes_<modo>.jsonl`, `backups\originals_<modo>.json`.
+> Los ajustes que usan HKLM requieren ejecutar como administrador (la app ofrece reiniciarse con UAC).
