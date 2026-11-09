@@ -139,6 +139,16 @@ func supported(t Tweak) bool {
 	case len(t.Nvidia) > 0:
 		return nvAvailable()
 	case t.PS != nil, t.Cmd != nil:
+		// Los cmdlets de MMAgent hablan con el servicio SysMain: si está deshabilitado fallan (error 1058).
+		if t.ID == "memory_compression_off" {
+			k, err := registry.OpenKey(registry.LOCAL_MACHINE, `SYSTEM\CurrentControlSet\Services\SysMain`, registry.QUERY_VALUE)
+			if err != nil {
+				return true
+			}
+			defer k.Close()
+			v, _, err := k.GetIntegerValue("Start")
+			return err != nil || v != startDisabled
+		}
 		return true
 	}
 	return len(expand(t)) > 0 || len(existingTasks(t)) > 0
