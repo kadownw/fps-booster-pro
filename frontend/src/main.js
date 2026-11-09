@@ -14,7 +14,7 @@ import { lineChart, barChart } from './chart.js';
 // ---------- estado ----------
 const HIST_MAX = 150;                       // 150 muestras x 2 s = 5 minutos
 const S = {
-  info: null, tweaks: [], cat: 'Todos', q: '', sim: false, busy: false, page: 'home',
+  info: null, scanAt: 0, scanning: false, tweaks: [], cat: 'Todos', q: '', sim: false, busy: false, page: 'home',
   rows: new Map(), clean: null, startup: null, live: null, game: null,
   hist: { cpu: [], ram: [], gpu: [], disk: [] }, range: 30, visible: { cpu: true, ram: true, gpu: true, disk: false },
 };
@@ -253,8 +253,8 @@ function paintRow(r, t) {
     r.btn.classList.toggle('primary', q === 'once');
   }
   r.row.title = t.locked ? 'Incluido en Pro Tier' : t.disabled ? 'No aplica a tu equipo' : (t.blocked ? 'Requiere administrador' : '');
-  r.detail.textContent = t.detail || '';
-  r.detail.className = 'tc-detail ' + (t.status || '');
+  r.detail.textContent = S.scanAt ? (t.detail || '') : '';
+  r.detail.className = 'tc-detail ' + (t.status || '') + (S.scanning ? ' stale' : '');
   r.last.textContent = t.once && t.lastRun ? `Última vez: ${fmtWhen(t.lastRun)}` : '';
   r.tags.replaceChildren(...[
     t.locked && h('span', { class: 'tag pro' }, 'Pro'),
@@ -313,8 +313,25 @@ function paintState() {
   paintQueue();
 }
 
+// Leer la PC: todo lo que la app muestra (estados, explicaciones, hardware) sale de esta lectura del
+// equipo donde se está ejecutando; nada viene guardado de otra computadora.
+function paintScan() {
+  if (!el.scanBar || !el.scanBar.isConnected) return;
+  const i = S.info || {};
+  el.scanBar.classList.toggle('busy', S.scanning);
+  if (S.scanning) { el.scanBar.replaceChildren(h('div', { class: 'spin' }), h('span', {}, 'Leyendo tu PC…')); return; }
+  if (!S.scanAt) { el.scanBar.replaceChildren(h('span', {}, 'Todavía no se leyó tu PC.')); return; }
+  const when = new Date(S.scanAt).toLocaleTimeString('es-AR', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+  el.scanBar.replaceChildren(
+    h('div', { class: 'sb-txt' }, h('b', {}, 'Leído de tu equipo'), h('span', {}, [i.cpu, (i.gpus || [])[0], i.ramGB ? `${i.ramGB.toFixed(0)} GB RAM` : '', i.windows].filter(Boolean).join(' · ')), h('small', {}, `a las ${when}`)),
+    h('button', { class: 'sm', 'data-needbusy': 1, onclick: () => refresh() }, 'Volver a leer'));
+}
+
 async function refresh() {
+  S.scanning = true; paintScan();
+  try { S.info = await GetSystemInfo(); } catch (e) { /* se conserva la lectura anterior */ }
   const list = (await ListTweaks()) || [];
+  S.scanAt = Date.now(); S.scanning = false;
   const newIds = list.map((t) => t.id).join();
   const rebuild = newIds !== S.tweaks.map((t) => t.id).join();
   S.tweaks = list;
@@ -322,6 +339,7 @@ async function refresh() {
   pruneQueue();
   paintState();
   paintQueue();
+  paintScan();
   if (rebuild) { paintChips(); paintSettingsList(); }
 }
 
@@ -563,10 +581,12 @@ function pageSettings() {
   el.revertAll = h('button', { class: 'danger', onclick: revertAllFlow }, 'Revertir todo');
   el.simBanner = h('div', { class: 'banner info', hidden: true }, 'Modo simulación: no se modifica nada en tu Windows.');
   el.upgradeBanner = h('div', { class: 'banner upsell', hidden: true });
+  el.scanBar = h('div', { class: 'scanbar' });
+  setTimeout(() => { paintScan(); refresh(); }, 0);        // cada vez que se abre Optimizar se lee la PC de nuevo
   setTimeout(() => { paintChips(); paintSettingsList(); paintState(); }, 0);
   return [
     pageHead('Optimizar', 'Elegí lo que querés activar o desactivar y aplicalo todo junto desde la barra de abajo. Las acciones únicas no se pueden deshacer.', el.search),
-    el.simBanner, el.upgradeBanner,
+    el.simBanner, el.upgradeBanner, el.scanBar,
     h('div', { class: 'toolbar' }, el.chips,
       h('div', { class: 'row' }, h('label', { class: 'chk' }, el.simBox, 'Modo simulación'), el.revertAll)),
     el.list,

@@ -5,3 +5,5 @@ frontend/dist/*
 *.exe
 frontend/package.json.md5
 !dist/*.exe
+
+changes.log

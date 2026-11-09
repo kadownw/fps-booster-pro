@@ -31,7 +31,7 @@ Requisitos: Go 1.23+, Node.js y [Wails v2](https://wails.io).
 
 ```powershell
 go install github.com/wailsapp/wails/v2/cmd/wails@latest
-wails build            # genera build\bin\South-Tweaks.exe
+wails build -trimpath  # genera build\bin\South-Tweaks.exe (sin rutas de tu equipo dentro del exe)
 go test ./...          # prueba aplicar/revertir contra HKCU real y la simulación
 ```
 

@@ -342,7 +342,7 @@ func TestTierRules(t *testing.T) {
 }
 
 func TestEngineBlocksFreeTier(t *testing.T) {
-	e := &Engine{st: store{Items: map[string]*Backup{}}, simApplied: map[string]bool{}, runs: map[string]string{}, sim: true}
+	e := &Engine{dir: t.TempDir(), st: store{Items: map[string]*Backup{}}, simApplied: map[string]bool{}, runs: map[string]string{}, sim: true}
 	tier := tierFree
 	e.tier = func() string { return tier }
 	if err := e.Apply("svc_max_performance"); err != errTier {
