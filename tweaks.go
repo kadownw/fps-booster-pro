@@ -2,6 +2,7 @@ package main
 
 import (
 	"strings"
+	"sync"
 	"time"
 )
 
@@ -37,6 +38,9 @@ type RegChange struct {
 	// IfCurrent: el cambio solo se hace si el valor DWORD actual es exactamente este (p. ej. servicios
 	// deshabilitados que un arreglo vuelve a poner en manual; no toca los que ya están bien).
 	IfCurrent *uint32 `json:"ifCurrent,omitempty"`
+	// Optional: si Windows protege este valor y rechaza la escritura (acceso denegado), se omite y el resto
+	// del ajuste sigue; el diagnóstico lo cuenta como «omitido» y no como pendiente.
+	Optional bool `json:"optional,omitempty"`
 }
 
 type Tweak struct {
@@ -89,7 +93,44 @@ const (
 
 // expand reemplaza {GPU} por la clave de cada adaptador del fabricante, calcula valores
 // dinámicos y omite los cambios marcados MustExist cuya clave no existe en este equipo.
+// expandMemo: durante List() (que pide expand varias veces por ajuste) se reutiliza el resultado. Fuera de List
+// siempre se lee el sistema de nuevo, porque aplicar o revertir cambia lo que expand devuelve.
+var expandMemo struct {
+	sync.Mutex
+	m map[string][]RegChange
+}
+
+func beginExpandMemo() {
+	expandMemo.Lock()
+	expandMemo.m = map[string][]RegChange{}
+	expandMemo.Unlock()
+}
+
+func endExpandMemo() {
+	expandMemo.Lock()
+	expandMemo.m = nil
+	expandMemo.Unlock()
+}
+
 func expand(t Tweak) []RegChange {
+	expandMemo.Lock()
+	if expandMemo.m != nil {
+		if v, ok := expandMemo.m[t.ID]; ok {
+			expandMemo.Unlock()
+			return v
+		}
+	}
+	expandMemo.Unlock()
+	out := expandUncached(t)
+	expandMemo.Lock()
+	if expandMemo.m != nil {
+		expandMemo.m[t.ID] = out
+	}
+	expandMemo.Unlock()
+	return out
+}
+
+func expandUncached(t Tweak) []RegChange {
 	var base []RegChange
 	if t.Vendor == "" {
 		for _, c := range t.Changes {

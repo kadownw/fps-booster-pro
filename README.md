@@ -56,4 +56,7 @@ go test ./...          # prueba aplicar/revertir contra HKCU real y la simulaci�
 
 > Los ajustes que usan HKLM requieren ejecutar como administrador (la app ofrece reiniciarse con UAC).
 
+## Pruebas
 
+- `go test ./...` corre solo pruebas que no modifican tu Windows.
+- Con `FBP_ADMIN_TESTS=1` y una consola de administrador corren además las pruebas reales: aplican, verifican y revierten **cada** ajuste del catálogo, ejecutan las acciones únicas inocuas, prueban el inicio de Windows, la limpieza (con una carpeta propia), la detección de juegos con FPS medidos (programa OpenGL en `tools/gltest`), el flujo de inicio de sesión con Discord y los arreglos. Cambian cosas de tu PC y las restauran; usalas en una PC de pruebas.

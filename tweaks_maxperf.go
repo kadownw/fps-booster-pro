@@ -18,18 +18,20 @@ import "strings"
 //   - Entrada y periféricos: hidserv, Bluetooth (bthserv, BthAvctpSvc, BTAGService, BluetoothUserService),
 //     TabletInputService, WbioSrvc, PenService, FontCache.
 //   - Restauración y actualizaciones: VSS, swprv, wuauserv, UsoSvc, WaaSMedicSvc, SDRSVC.
+//   - Servicios que otras funciones de South Tweaks necesitan: defragsvc (TRIM de SSD), BDESVC (BitLocker),
+//     FrameServer (cámaras), VaultSvc (Administrador de credenciales), DsmSvc (instalar dispositivos) y
+//     SgrmBroker (System Guard / protecciones que usan los anticheats).
 //
 // Tampoco se incluyen WdiServiceHost ni WdiSystemHost: su clave pertenece a TrustedInstaller y ni\n// un administrador puede escribirla.\n// Por eso este ajuste es «Moderado» y avisa que el cambio se nota tras reiniciar.
 
 var maxPerfServices = []string{
 	"ADPSvc", "AarSvc", "AJRouter", "ALG", "AppIDSvc", "AppMgmt", "AppReadiness", "AppVClient", "ApxSvc",
-	"AssignedAccessManagerSvc", "autotimesvc", "AxInstSV", "BcastDVRUserService", "BDESVC", "Browser",
+	"AssignedAccessManagerSvc", "autotimesvc", "AxInstSV", "BcastDVRUserService", "Browser",
 	"CaptureService", "cbdhsvc", "CDPSvc", "CDPUserSvc", "CloudBackupRestoreSvc", "cloudidsvc", "COMSysApp",
-	"ConsentUxUserSvc", "CredentialEnrollmentManagerUserSvc", "CscService", "dcsvc", "defragsvc",
-	"DeviceAssociationBrokerSvc", "DevicePickerUserSvc", "DevicesFlowUserSvc", "DevQueryBroker",
+	"ConsentUxUserSvc", "CredentialEnrollmentManagerUserSvc", "CscService", "dcsvc", "DeviceAssociationBrokerSvc", "DevicePickerUserSvc", "DevicesFlowUserSvc", "DevQueryBroker",
 	"diagnosticshub.standardcollector.service", "diagsvc", "DiagTrack", "DialogBlockingService",
-	"DcpSvc", "dmwappushservice", "dot3svc", "DsmSvc", "DsSvc", "DusmSvc", "EapHost", "embeddedmode", "EntAppSvc",
-	"Fax", "fdPHost", "FDResPub", "fhsvc", "FrameServer", "FrameServerMonitor", "hpatchmon", "HvHost",
+	"DcpSvc", "dmwappushservice", "dot3svc", "DsSvc", "DusmSvc", "EapHost", "embeddedmode", "EntAppSvc",
+	"Fax", "fdPHost", "FDResPub", "fhsvc", "hpatchmon", "HvHost",
 	"icssvc", "IKEEXT", "InventorySvc", "IpxlatCfgSvc", "KtmRm", "LanmanServer", "lfsvc", "lltdsvc",
 	"LocalKdc", "LxpSvc", "MapsBroker", "McmSvc", "McpManagementService", "MessagingService", "midisrv",
 	"MixedRealityOpenXRSvc", "MSDTC", "MSiSCSI", "MsKeyboardFilter", "NaturalAuthentication", "NcaSvc",
@@ -38,11 +40,10 @@ var maxPerfServices = []string{
 	"PimIndexMaintenanceSvc", "pla", "PNRPAutoReg", "PNRPsvc", "PolicyAgent", "PrintDeviceConfigurationService",
 	"PrintNotify", "PrintScanBrokerService", "PrintWorkflowUserSvc", "PushToInstall", "QWAVE", "refsdedupsvc",
 	"RemoteAccess", "RemoteRegistry", "RetailDemo", "RmSvc", "RpcLocator", "SCardSvr", "ScDeviceEnum",
-	"SCPolicySvc", "SEMgrSvc", "SensorDataService", "SensorService", "SensrSvc", "SessionEnv", "SgrmBroker",
-	"SharedAccess", "SharedRealitySvc", "shpamsvc", "SmsRouter", "SNMPTrap", "spectrum", "Spooler", "SSDPSRV",
+	"SCPolicySvc", "SEMgrSvc", "SensorDataService", "SensorService", "SensrSvc", "SessionEnv", "SharedAccess", "SharedRealitySvc", "shpamsvc", "SmsRouter", "SNMPTrap", "spectrum", "Spooler", "SSDPSRV",
 	"ssh-agent", "SstpSvc", "StiSvc", "svsvc", "SysMain", "TapiSrv", "TieringEngineService",
 	"TroubleshootingSvc", "tzautoupdate", "UdkUserSvc", "UevAgentService", "uhssvc", "UmRdpService",
-	"UnistoreSvc", "upnphost", "VacSvc", "VaultSvc", "vmicguestinterface", "vmicheartbeat",
+	"UnistoreSvc", "upnphost", "VacSvc", "vmicguestinterface", "vmicheartbeat",
 	"vmickvpexchange", "vmicrdv", "vmicshutdown", "vmictimesync", "vmicvmsession", "vmicvss", "WalletService",
 	"WarpJITSvc", "wbengine", "wcncsvc", "WebClient", "Wecsvc",
 	"WEPHOSTSVC", "wercplsupport", "WerSvc", "WFDSConMgrSvc", "whesvc", "WiaRpc", "WinRM", "wisvc",

@@ -113,9 +113,9 @@ func extraCatalog() []Tweak {
 			ID: "news_interests", Title: "Desactivar Noticias e intereses", Category: "Privacidad", Admin: true,
 			Description: "Quita el widget de noticias de la barra de tareas, que consume memoria y red en segundo plano.",
 			Changes: []RegChange{
-				dw("HKLM", `SOFTWARE\Policies\Microsoft\Dsh`, "AllowNewsAndInterests", 0),
+				optional(dw("HKLM", `SOFTWARE\Policies\Microsoft\Dsh`, "AllowNewsAndInterests", 0)),
 				dw("HKLM", `SOFTWARE\Microsoft\PolicyManager\default\NewsAndInterests\AllowNewsAndInterests`, "value", 0),
-				dw("HKCU", `Software\Microsoft\Windows\CurrentVersion\Feeds`, "ShellFeedsTaskbarViewMode", 0),
+				optional(dw("HKCU", `Software\Microsoft\Windows\CurrentVersion\Feeds`, "ShellFeedsTaskbarViewMode", 0)),
 			},
 		},
 		{
@@ -238,4 +238,10 @@ func extraCatalog() []Tweak {
 			},
 		},
 	}
+}
+
+// optional marca un cambio como omitible si Windows protege ese valor (acceso denegado incluso siendo administrador).
+func optional(c RegChange) RegChange {
+	c.Optional = true
+	return c
 }

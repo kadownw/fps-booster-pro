@@ -63,6 +63,6 @@ func saveViewAs(t string) {
 }
 
 func isFixID(id string) bool {
-	t, ok := findTweak(id)
-	return ok && t.Fix
+	_, ok := fixSpecs[id] // mapa estático: no reconstruye el catálogo en cada comprobación
+	return ok
 }

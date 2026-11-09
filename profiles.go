@@ -109,6 +109,12 @@ func CreateRestorePoint() error {
 	if !isAdmin() {
 		return errNeedAdmin
 	}
+	// Explicación clara cuando Windows no puede crear puntos de restauración en este equipo.
+	for _, name := range []string{"VSS", "swprv"} {
+		if st, ok := regServiceStart(name); ok && st == startDisabled {
+			return fmt.Errorf("no se puede crear el punto de restauración: el servicio %s (Instantáneas de volumen) está deshabilitado en este equipo. Podés seguir igual: cada ajuste guarda su valor original y se revierte desde la app", name)
+		}
+	}
 	out, err := runPS(`Checkpoint-Computer -Description 'South Tweaks' -RestorePointType MODIFY_SETTINGS -ErrorAction Stop`)
 	if err != nil {
 		msg := strings.TrimSpace(out)

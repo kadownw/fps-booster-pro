@@ -180,7 +180,7 @@ func fixesCatalog() []Tweak {
 		{
 			ID: "fix_valorant_hvci", Title: "Valorant: activar Integridad de memoria (HVCI)", Category: "Fixes", Icon: "valorant", Admin: true, Reboot: true, Fix: true,
 			Description: "Activa la Integridad de memoria (HVCI), que Vanguard y FACEIT exigen. Necesita reiniciar y Windows la deja apagada si detecta drivers incompatibles. Tiene un costo de rendimiento chico y variable (las pruebas publicadas van de ~3 % a ~8 % en juegos limitados por CPU).",
-			Changes:     []RegChange{dw("HKLM", hvciKey, "Enabled", 1), dw("HKLM", dgKey, "EnableVirtualizationBasedSecurity", 1), dw("HKLM", dgKey, "RequirePlatformSecurityFeatures", 1)},
+			Changes:     hvciChanges(),
 		},
 		{
 			ID: "fix_nvidia_panel", Title: "Panel de control de NVIDIA (sin Microsoft Store)", Category: "Fixes", Icon: "nvidia", Fix: true,
@@ -307,16 +307,10 @@ var fixSpecs = map[string]fixSpec{
 		},
 	},
 	"fix_wifi": {
-		Healthy: "WLAN AutoConfig y WinHTTP Auto-Proxy están habilitados y en ejecución.",
-		Check: func() []string {
-			out := disabledServices("WlanSvc", "WinHttpAutoProxySvc")
-			for _, n := range []string{"WlanSvc", "WinHttpAutoProxySvc"} {
-				if run, known := serviceRunning(n); known && !run && len(disabledServices(n)) == 0 {
-					out = append(out, fmt.Sprintf("El servicio %s no está en ejecución.", n))
-				}
-			}
-			return out
-		},
+		Healthy: "WLAN AutoConfig y WinHTTP Auto-Proxy no están deshabilitados.",
+		// Solo un servicio DESHABILITADO es un problema: WinHttpAutoProxySvc arranca a pedido y WlanSvc se
+		// detiene solo si no hay adaptador Wi-Fi, así que «detenido» no indica nada.
+		Check: func() []string { return disabledServices("WlanSvc", "WinHttpAutoProxySvc") },
 		Post: func() []string {
 			var lines []string
 			for _, n := range []string{"WlanSvc", "WinHttpAutoProxySvc"} {
@@ -516,23 +510,25 @@ type FixOutcome struct {
 	Reboot  bool     `json:"reboot"`
 }
 
-// RunFix comprueba, corrige y vuelve a comprobar. Informa solo lo que Windows confirma.
+// RunFix comprueba, corrige y vuelve a comprobar. Informa solo lo que Windows confirma. El candado del
+// motor se toma SOLO para escribir configuración: comprobar y los pasos lentos (arrancar servicios,
+// PowerShell, abrir un programa) corren sin bloquear al resto de la app.
 func (e *Engine) RunFix(id string) (out FixOutcome) {
-	e.mu.Lock()
-	defer e.mu.Unlock()
-	var err error
+	var logErr error
 	defer func() {
 		if out.Error != "" {
-			err = fmt.Errorf("%s", out.Error)
+			logErr = fmt.Errorf("%s", out.Error)
 		}
-		e.log("fix", id, err)
+		e.mu.Lock()
+		e.log("fix", id, logErr)
+		e.mu.Unlock()
 	}()
 	t, ok := findTweak(id)
 	spec, has := fixSpecs[id]
 	if !ok || !t.Fix || !has {
 		return FixOutcome{Error: "arreglo desconocido: " + id}
 	}
-	if e.sim {
+	if e.Simulation() {
 		return FixOutcome{Message: "Simulación: no se ejecutó nada.", Noop: true}
 	}
 	if t.Admin && !isAdmin() {
@@ -550,7 +546,10 @@ func (e *Engine) RunFix(id string) (out FixOutcome) {
 		lines = append(lines, "Encontrado: "+p)
 	}
 	if regs := expand(t); len(regs) > 0 {
-		if err := e.applyCore(t); err != nil {
+		e.mu.Lock()
+		err := e.applyCore(t)
+		e.mu.Unlock()
+		if err != nil {
 			return FixOutcome{Error: humanError(t, err), Lines: lines}
 		}
 		lines = append(lines, okLine(fmt.Sprintf("%d valor(es) de configuración corregidos y verificados (se pueden deshacer).", len(regs))))
@@ -562,8 +561,6 @@ func (e *Engine) RunFix(id string) (out FixOutcome) {
 	if spec.Check != nil && !spec.Always {
 		after = spec.Check()
 	}
-	e.runs[id] = time.Now().Format(time.RFC3339)
-	e.saveRuns()
 	failed := false
 	for _, l := range lines {
 		if strings.HasPrefix(l, "✗") {
@@ -577,9 +574,28 @@ func (e *Engine) RunFix(id string) (out FixOutcome) {
 		}
 		return FixOutcome{Error: msg, Lines: lines, Reboot: t.Reboot}
 	}
+	e.mu.Lock()
+	e.runs[id] = time.Now().Format(time.RFC3339)
+	e.saveRuns()
+	e.mu.Unlock()
 	msg := "Arreglado y verificado con Windows."
 	if spec.Always {
 		msg = "Listo."
 	}
 	return FixOutcome{Message: msg, Lines: lines, Reboot: t.Reboot}
+}
+
+// hvciChanges: HVCI siempre se activa; VBS y las funciones de plataforma solo se escriben si faltan, para no
+// pisar una configuración más fuerte que el equipo ya tenga (p. ej. RequirePlatformSecurityFeatures = 3).
+func hvciChanges() []RegChange {
+	out := []RegChange{dw("HKLM", hvciKey, "Enabled", 1)}
+	vbs := dw("HKLM", dgKey, "EnableVirtualizationBasedSecurity", 1)
+	if st, _ := readState(vbs); !st.Exists || st.D == 0 {
+		out = append(out, vbs)
+	}
+	req := dw("HKLM", dgKey, "RequirePlatformSecurityFeatures", 1)
+	if st, _ := readState(req); !st.Exists {
+		out = append(out, req)
+	}
+	return out
 }

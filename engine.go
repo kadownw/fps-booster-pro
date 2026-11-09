@@ -8,6 +8,7 @@ import (
 	"path/filepath"
 	"strings"
 	"sync"
+	"syscall"
 	"time"
 )
 
@@ -282,6 +283,9 @@ func (e *Engine) isActive(t Tweak) bool {
 	for _, c := range regs {
 		st, err := readState(c)
 		if err != nil || !satisfied(c, st) {
+			if c.Optional {
+				continue // valor protegido por Windows: no cuenta
+			}
 			return false
 		}
 	}
@@ -310,6 +314,8 @@ func (e *Engine) List() []TweakView {
 	e.mu.Lock()
 	defer e.mu.Unlock()
 	adm := isAdmin()
+	beginExpandMemo()
+	defer endExpandMemo()
 	var out []TweakView
 	for _, t := range catalog() {
 		if t.Fix {
@@ -457,6 +463,9 @@ func (e *Engine) doApply(t Tweak) error {
 			want = RegState{Exists: true, Kind: "sz", S: mergeKV(cur.S, c.KV)}
 		}
 		if err := writeState(c, want); err != nil {
+			if c.Optional && errors.Is(err, syscall.ERROR_ACCESS_DENIED) {
+				continue // Windows protege este valor: se omite
+			}
 			return fmt.Errorf("%s\\%s\\%s: %w", c.Root, c.Path, c.Name, err)
 		}
 		st, err := readState(c)

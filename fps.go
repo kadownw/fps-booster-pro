@@ -7,6 +7,7 @@ import (
 	"sort"
 	"sync"
 	"sync/atomic"
+	"time"
 	"unsafe"
 
 	"golang.org/x/sys/windows"
@@ -129,7 +130,8 @@ type fpsCapture struct {
 	dxgi series
 	krnl series
 
-	krnlErr uintptr // 0 = DxgKrnl activo
+	ctl     sync.Mutex // serializa Start y Stop (los llaman el detector de juegos y el cierre de la app)
+	krnlErr uintptr    // 0 = DxgKrnl activo
 	pid     atomic.Uint32
 	session uint64
 	trace   uint64
@@ -185,6 +187,8 @@ func stopSessionByName() {
 
 // Start abre la sesión ETW y empieza a contar los «Present» de pid.
 func (c *fpsCapture) Start(pid uint32) error {
+	c.ctl.Lock()
+	defer c.ctl.Unlock()
 	if c.running {
 		c.pid.Store(pid)
 		return nil
@@ -268,12 +272,17 @@ func pickSeries(dx []float32, dxSum float64, kr []float32, krSum float64) ([]flo
 
 // Stop cierra la sesión y devuelve el resultado.
 func (c *fpsCapture) Stop() fpsResult {
+	c.ctl.Lock()
+	defer c.ctl.Unlock()
 	res := c.Snapshot()
 	if c.running {
 		stopSessionByName()
 		procCloseTrace.Call(uintptr(c.trace))
 		if c.done != nil {
-			<-c.done
+			select {
+			case <-c.done:
+			case <-time.After(3 * time.Second): // ProcessTrace no volvió: no se cuelga el cierre de la app
+			}
 		}
 		c.running = false
 	}

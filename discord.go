@@ -175,12 +175,14 @@ const callbackPage = `<!doctype html><meta charset="utf-8"><title>South Tweaks</
 <div id="m">Conectando con South Tweaks…</div>
 <script>
 const p = new URLSearchParams(location.hash.slice(1));
-fetch('/token', {method:'POST', body: JSON.stringify({token: p.get('access_token')||'', state: p.get('state')||'', error: new URLSearchParams(location.search).get('error')||''})})
+const q = new URLSearchParams(location.search);
+fetch('/token', {method:'POST', body: JSON.stringify({token: p.get('access_token')||'', state: p.get('state')||q.get('state')||'', error: q.get('error')||''})})
  .then(()=>{ document.getElementById('m').textContent = 'Listo. Ya podés volver a South Tweaks y cerrar esta pestaña.'; })
  .catch(()=>{ document.getElementById('m').textContent = 'No se pudo completar. Volvé a intentarlo desde la app.'; });
 </script>`
 
-func openBrowser(u string) error {
+// openBrowser es una variable para que las pruebas puedan sustituirla.
+var openBrowser = func(u string) error {
 	cmd := exec.Command("rundll32.exe", "url.dll,FileProtocolHandler", u)
 	cmd.SysProcAttr = &syscall.SysProcAttr{HideWindow: true}
 	return cmd.Start()
@@ -219,13 +221,28 @@ func DiscordLogin() DiscordUser {
 			http.Error(w, "mal", http.StatusBadRequest)
 			return
 		}
+		// Sin el state correcto se ignora la petición: cualquier página local podría mandarla, y así no
+		// puede cancelar ni envenenar el inicio de sesión que está esperando el usuario.
+		if in.State != state {
+			http.Error(w, "state inválido", http.StatusBadRequest)
+			return
+		}
 		switch {
 		case in.Error != "":
-			errCh <- "Cancelaste el inicio de sesión."
-		case in.State != state || in.Token == "":
-			errCh <- "La respuesta de Discord no es válida (state distinto)."
+			select {
+			case errCh <- "Cancelaste el inicio de sesión.":
+			default:
+			}
+		case in.Token == "":
+			select {
+			case errCh <- "Discord no devolvió ninguna autorización.":
+			default:
+			}
 		default:
-			tokenCh <- in.Token
+			select {
+			case tokenCh <- in.Token:
+			default: // ya había una respuesta: la segunda se descarta sin bloquear
+			}
 		}
 		w.WriteHeader(http.StatusNoContent)
 	})

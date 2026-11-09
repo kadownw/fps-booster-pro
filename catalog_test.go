@@ -1,6 +1,7 @@
 package main
 
 import (
+	"os"
 	"strings"
 	"testing"
 	"time"
@@ -55,6 +56,9 @@ func TestCatalogIsConsistent(t *testing.T) {
 
 // Todos los ajustes que no necesitan admin se aplican y revierten de verdad en HKCU.
 func TestRoundTripAllUserTweaks(t *testing.T) {
+	if os.Getenv("FBP_ADMIN_TESTS") != "1" { // modifica el HKCU y los backups REALES: solo si se pide expresamente
+		t.Skip("define FBP_ADMIN_TESTS=1: esta prueba cambia (y restaura) ajustes reales de tu usuario")
+	}
 	e, err := NewEngine()
 	if err != nil {
 		t.Fatal(err)

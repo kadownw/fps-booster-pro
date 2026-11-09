@@ -6,6 +6,7 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
+	"strings"
 	"time"
 )
 
@@ -31,6 +32,29 @@ func envDir(env string, rel ...string) string {
 	return filepath.Join(append([]string{b}, rel...)...)
 }
 
+// userTempDirs devuelve %TEMP% solo si de verdad parece una carpeta de temporales: si TEMP/TMP apuntan a una
+// carpeta de documentos, de un proyecto o a la raíz de un disco, NO se limpia (se borrarían archivos propios).
+func userTempDirs() []string {
+	d := os.TempDir()
+	if !looksLikeTemp(d) {
+		return nil
+	}
+	return []string{d}
+}
+
+func looksLikeTemp(p string) bool {
+	clean := strings.ToLower(filepath.Clean(p))
+	if vol := filepath.VolumeName(clean); clean == vol || clean == vol+`\` {
+		return false
+	}
+	for _, part := range strings.Split(clean, `\`) {
+		if part == "temp" || part == "tmp" {
+			return true
+		}
+	}
+	return false
+}
+
 func nonEmpty(s ...string) []string {
 	var out []string
 	for _, v := range s {
@@ -43,7 +67,7 @@ func nonEmpty(s ...string) []string {
 
 var cleanTargets = []cleanTarget{
 	{"temp_user", "Archivos temporales del usuario", "Archivos que las apps dejan en %TEMP%.",
-		func() []string { return nonEmpty(os.TempDir()) }},
+		func() []string { return userTempDirs() }},
 	{"temp_windows", "Archivos temporales de Windows", "Carpeta C:\\Windows\\Temp (requiere administrador).",
 		func() []string { return nonEmpty(envDir("SystemRoot", "Temp")) }},
 	{"crash_dumps", "Volcados de errores", "Volcados de memoria de programas que se cerraron con error.",

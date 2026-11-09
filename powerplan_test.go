@@ -87,6 +87,11 @@ func TestReadACValueParsesAnyLanguage(t *testing.T) {
 
 // Crea el plan, lo activa, verifica valores, revierte y comprueba que se borró y volvió el anterior.
 func TestSouthPlanRoundTrip(t *testing.T) {
+	if schemeExists(southPlanGUID) {
+		// La prueba crea el plan y verifica que se borre al revertir; si el usuario ya lo tiene instalado
+		// (p. ej. como su plan activo) no se puede distinguir, así que no se toca.
+		t.Skip("el plan South's Core ya existe en este equipo: no se prueba para no borrar el plan del usuario")
+	}
 	if os.Getenv("FBP_ADMIN_TESTS") != "1" || !isAdmin() {
 		t.Skip("define FBP_ADMIN_TESTS=1 y ejecuta como administrador")
 	}

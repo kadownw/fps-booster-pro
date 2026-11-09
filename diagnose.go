@@ -102,14 +102,20 @@ func (e *Engine) diagnose(t Tweak, active bool) Diagnosis {
 	tasks := existingTasks(t)
 	d := Diagnosis{Total: len(regs) + len(tasks), Skipped: skippedChanges(t)}
 	var missing []string
+	protected := 0
 	for _, c := range regs {
 		st, err := readState(c)
-		if err == nil && satisfied(c, st) {
+		switch {
+		case err == nil && satisfied(c, st):
 			d.Done++
-		} else {
+		case c.Optional:
+			protected++ // Windows protege este valor: no cuenta como pendiente
+			d.Total--
+		default:
 			missing = append(missing, c.Name)
 		}
 	}
+	d.Skipped += protected
 	for p, st := range tasks {
 		if st == "Disabled" {
 			d.Done++
@@ -128,9 +134,9 @@ func (e *Engine) diagnose(t Tweak, active bool) Diagnosis {
 	skip := ""
 	if d.Skipped > 0 {
 		if d.Skipped == 1 {
-			skip = " (1 más no existe en tu Windows y se omite)"
+			skip = " (1 más no existe en tu Windows o lo protege Windows y se omite)"
 		} else {
-			skip = fmt.Sprintf(" (%d más no existen en tu Windows y se omiten)", d.Skipped)
+			skip = fmt.Sprintf(" (%d más no existen en tu Windows o los protege Windows y se omiten)", d.Skipped)
 		}
 	}
 	switch {

@@ -485,6 +485,7 @@ export namespace main {
 	    date?: string;
 	    delete?: boolean;
 	    ifCurrent?: number;
+	    optional?: boolean;
 	
 	    static createFrom(source: any = {}) {
 	        return new RegChange(source);
@@ -506,6 +507,7 @@ export namespace main {
 	        this.date = source["date"];
 	        this.delete = source["delete"];
 	        this.ifCurrent = source["ifCurrent"];
+	        this.optional = source["optional"];
 	    }
 	}
 	export class TweakView {

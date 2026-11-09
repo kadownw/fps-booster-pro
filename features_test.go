@@ -292,7 +292,8 @@ func TestMaxPerfServicesAreSafeAndUnshared(t *testing.T) {
 	}
 	protected := []string{"BFE", "mpssvc", "EventLog", "EventSystem", "PlugPlay", "SamSs", "Themes", "WlanSvc",
 		"NlaSvc", "Dnscache", "AudioSrv", "Audiosrv", "AudioEndpointBuilder", "TokenBroker", "ClipSVC", "wuauserv",
-		"UsoSvc", "VSS", "bthserv", "hidserv", "LanmanWorkstation", "WinDefend", "Winmgmt", "RpcSs", "DcomLaunch"}
+		"UsoSvc", "VSS", "bthserv", "hidserv", "LanmanWorkstation", "WinDefend", "Winmgmt", "RpcSs", "DcomLaunch",
+		"defragsvc", "BDESVC", "FrameServer", "VaultSvc", "DsmSvc", "SgrmBroker"}
 	own := map[string]bool{}
 	for _, c := range mp.Changes {
 		if c.D != startDisabled {
