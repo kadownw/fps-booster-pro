@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 	"sync"
 	"time"
 )
@@ -223,6 +224,8 @@ type TweakView struct {
 	Disabled bool   `json:"disabled"`          // no aplica a este equipo (p. ej. no hay GPU de ese fabricante)
 	LastRun  string `json:"lastRun,omitempty"` // última vez que se ejecutó una acción única
 	Locked   bool   `json:"locked"`            // el nivel de la cuenta no lo incluye (Free Tier)
+	Status   string `json:"status"`            // applied | partial | not_applied | unavailable | once
+	Detail   string `json:"detail"`            // explicación del estado, leída del sistema
 }
 
 func (e *Engine) List() []TweakView {
@@ -232,9 +235,13 @@ func (e *Engine) List() []TweakView {
 	var out []TweakView
 	for _, t := range catalog() {
 		_, has := e.st.Items[t.ID]
+		active := e.isActive(t)
+		diag := e.diagnose(t, active)
 		out = append(out, TweakView{
 			Tweak:    t,
-			Active:   e.isActive(t),
+			Active:   active,
+			Status:   diag.Status,
+			Detail:   diag.Detail,
 			CanUndo:  has || (e.sim && e.simApplied[t.ID]),
 			Blocked:  t.Admin && !adm && !e.sim,
 			Disabled: !supported(t),
@@ -448,8 +455,26 @@ func (e *Engine) revertLocked(id string) error {
 	if err := e.restore(bk); err != nil {
 		return fmt.Errorf("no se pudo restaurar todo: %w (el backup se conservó)", err)
 	}
+	if bad := verifyRestore(bk); len(bad) > 0 {
+		return fmt.Errorf("se intentó restaurar pero al volver a leer %s no coincide con el original (el backup se conservó)", strings.Join(bad, ", "))
+	}
 	delete(e.st.Items, id)
 	return e.save()
+}
+
+// verifyRestore relee cada valor del backup y devuelve los que NO volvieron a su original.
+func verifyRestore(bk *Backup) []string {
+	var bad []string
+	for _, it := range bk.Items {
+		st, err := readState(it.Change)
+		if err != nil || !sameState(st, it.Orig) {
+			bad = append(bad, it.Change.Name)
+		}
+	}
+	if len(bad) > 3 {
+		bad = append(bad[:3], "…")
+	}
+	return bad
 }
 
 func (e *Engine) RevertAll() error {

@@ -374,6 +374,20 @@ export namespace main {
 		    return a;
 		}
 	}
+	export class TweakOutcome {
+	    message: string;
+	    error: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new TweakOutcome(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.message = source["message"];
+	        this.error = source["error"];
+	    }
+	}
 	export class NvSetting {
 	    id: number;
 	    value: number;
@@ -447,6 +461,8 @@ export namespace main {
 	    disabled: boolean;
 	    lastRun?: string;
 	    locked: boolean;
+	    status: string;
+	    detail: string;
 	
 	    static createFrom(source: any = {}) {
 	        return new TweakView(source);
@@ -476,6 +492,8 @@ export namespace main {
 	        this.disabled = source["disabled"];
 	        this.lastRun = source["lastRun"];
 	        this.locked = source["locked"];
+	        this.status = source["status"];
+	        this.detail = source["detail"];
 	    }
 	
 		convertValues(a: any, classs: any, asMap: boolean = false): any {

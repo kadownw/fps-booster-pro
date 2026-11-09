@@ -103,15 +103,22 @@ func (a *App) ListTweaks() []TweakView {
 	return a.engine.List()
 }
 
-// Los métodos devuelven "" si salió bien o el mensaje de error.
-func (a *App) ApplyTweak(id string) string {
+// TweakOutcome: resultado de aplicar o revertir. Error explica por qué no se pudo; Message describe lo
+// que Windows confirmó después del cambio.
+type TweakOutcome struct {
+	Message string `json:"message"`
+	Error   string `json:"error"`
+}
+
+func (a *App) ApplyTweak(id string) TweakOutcome {
 	if a.engine == nil {
-		return a.initEr
+		return TweakOutcome{Error: a.initEr}
 	}
-	if err := a.engine.Apply(id); err != nil {
-		return err.Error()
+	msg, err := a.engine.ApplyReport(id)
+	if err != nil {
+		return TweakOutcome{Error: err.Error()}
 	}
-	return ""
+	return TweakOutcome{Message: msg}
 }
 
 type OnceOutcome struct {
@@ -131,16 +138,16 @@ func (a *App) RunOnce(id string) OnceOutcome {
 	return OnceOutcome{Message: msg}
 }
 
-func (a *App) RevertTweak(id string) string {
+func (a *App) RevertTweak(id string) TweakOutcome {
 	if a.engine == nil {
-		return a.initEr
+		return TweakOutcome{Error: a.initEr}
 	}
-	if err := a.engine.Revert(id); err != nil {
-		return err.Error()
+	msg, err := a.engine.RevertReport(id)
+	if err != nil {
+		return TweakOutcome{Error: err.Error()}
 	}
-	return ""
+	return TweakOutcome{Message: msg}
 }
-
 func (a *App) RevertAll() string {
 	if a.engine == nil {
 		return a.initEr

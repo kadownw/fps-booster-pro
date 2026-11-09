@@ -176,7 +176,7 @@ function runQueue(items, restorePoint) {
         let err = '', msg = '';
         try {
           if (x.a === 'once') { const o = await RunOnce(x.t.id); err = o.error; msg = o.message; }
-          else err = await (x.a === 'apply' ? ApplyTweak : RevertTweak)(x.t.id);
+          else { const o = await (x.a === 'apply' ? ApplyTweak : RevertTweak)(x.t.id); err = o.error; msg = o.message; }
         } catch (e) { err = String(e); }
         if (err) { mark(x, 'bad', err); res.fail.push(`${x.t.title}: ${err}`); x.li.append(h('span', { class: 'qerr' }, err)); }
         else { mark(x, 'ok', msg); res.ok++; if (x.t.reboot) res.reboot = true; if (msg) x.li.append(h('span', { class: 'qerr okmsg' }, msg)); }
@@ -221,16 +221,18 @@ function buildRow(t) {
   }
   const tags = h('div', { class: 'tc-tags' });
   const last = h('span', { class: 'tc-last' });
+  const detail = h('p', { class: 'tc-detail' });
   const row = h('div', { class: 'tcard', style: `animation-delay:${Math.min(S.rows.size, 12) * 20}ms` },
     h('div', { class: 'tc-head' }, catIco(t.category), h('div', { class: 'tc-title' }, t.title),
       brand && h('span', { class: 'vbadge ' + brand, title: `Exclusivo de ${BRAND[brand]}` }, BRAND[brand])),
     h('div', { class: 'tc-rule' }),
     h('p', { class: 'tc-desc' }, t.description),
+    detail,
     h('div', { class: 'tc-foot' }, h('div', { class: 'tc-tags' }, tags, last), control));
   const lock = h('button', { class: 'lock-cover', hidden: true, onclick: () => upgradeDialog(S.rows.get(t.id).t.title) },
     icon('lock'), h('b', {}, 'Pro Tier'), h('span', {}, 'Upgrade · próximamente'));
   row.append(lock);
-  const r = { row, input, btn, tags, last, t, lock };
+  const r = { row, input, btn, tags, last, t, lock, detail };
   S.rows.set(t.id, r);
   return r;
 }
@@ -251,6 +253,8 @@ function paintRow(r, t) {
     r.btn.classList.toggle('primary', q === 'once');
   }
   r.row.title = t.locked ? 'Incluido en Pro Tier' : t.disabled ? 'No aplica a tu equipo' : (t.blocked ? 'Requiere administrador' : '');
+  r.detail.textContent = t.detail || '';
+  r.detail.className = 'tc-detail ' + (t.status || '');
   r.last.textContent = t.once && t.lastRun ? `Última vez: ${fmtWhen(t.lastRun)}` : '';
   r.tags.replaceChildren(...[
     t.locked && h('span', { class: 'tag pro' }, 'Pro'),

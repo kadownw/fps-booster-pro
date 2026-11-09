@@ -231,7 +231,7 @@ func TestPSOnlyRunsDeclaredCommands(t *testing.T) {
 
 func TestAppxPatternsAreFixed(t *testing.T) {
 	for _, bad := range []string{"x'; calc; '", "a b", "", "a|b", "$(calc)"} {
-		if _, err := removeAppx(bad); err == nil {
+		if _, err := appxList(bad); err == nil {
 			t.Errorf("aceptó el patrón %q", bad)
 		}
 	}

@@ -6,7 +6,7 @@ export function AppIcons(arg1:Array<string>):Promise<Record<string, string>>;
 
 export function ApplyProfile(arg1:string):Promise<main.ProfileOutcome>;
 
-export function ApplyTweak(arg1:string):Promise<string>;
+export function ApplyTweak(arg1:string):Promise<main.TweakOutcome>;
 
 export function ClearSessions():Promise<void>;
 
@@ -44,7 +44,7 @@ export function RelaunchAsAdmin():Promise<string>;
 
 export function RevertAll():Promise<string>;
 
-export function RevertTweak(arg1:string):Promise<string>;
+export function RevertTweak(arg1:string):Promise<main.TweakOutcome>;
 
 export function RunCleanup(arg1:Array<string>):Promise<main.CleanOutcome>;
 
