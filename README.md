@@ -1,4 +1,4 @@
-﻿# FPS Booster Pro
+# FPS Booster Pro
 
 Ajustes **reversibles** de Windows para juegos, en un único `.exe` (Go + Wails). Sin Python ni runtimes: abrís y listo (usa WebView2, que ya viene con Windows 10/11).
 
@@ -8,6 +8,10 @@ Ajustes **reversibles** de Windows para juegos, en un único `.exe` (Go + Wails)
 - Botón **Revertir todo** y **modo simulación** (no modifica nada).
 - No cierra procesos ni promete FPS: cada ajuste indica su riesgo y si necesita administrador o reinicio.
 - Los datos de backup y el registro de cambios quedan en `%LOCALAPPDATA%\FPSBoosterPro\`.
+
+## Descargar
+
+El ejecutable ya compilado está en [dist/FPS-Booster-Pro.exe](dist/FPS-Booster-Pro.exe). Doble clic y listo.
 
 ## Compilar
 

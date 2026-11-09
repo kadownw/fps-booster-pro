@@ -4,3 +4,4 @@ frontend/dist/*
 !frontend/dist/gitkeep
 *.exe
 frontend/package.json.md5
+!dist/*.exe
