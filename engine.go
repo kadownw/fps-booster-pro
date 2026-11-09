@@ -20,7 +20,47 @@ type BackupItem struct {
 type Backup struct {
 	Items     []BackupItem `json:"items,omitempty"`
 	PrevPower string       `json:"prevPower,omitempty"`
-	At        string       `json:"at"`
+	// Tasks: estado original de cada tarea programada ("Ready", "Disabled"...).
+	Tasks map[string]string `json:"tasks,omitempty"`
+	At    string            `json:"at"`
+}
+
+// ensure agrega al backup lo que todavía no tiene (original de cada valor y tarea del ajuste).
+// Devuelve true si cambió. Se llama antes de tocar nada.
+func (bk *Backup) ensure(t Tweak) (bool, error) {
+	changed := false
+	if t.Power && bk.PrevPower == "" {
+		g, err := activeScheme()
+		if err != nil {
+			return false, err
+		}
+		bk.PrevPower, changed = g, true
+	}
+	known := map[string]bool{}
+	for _, it := range bk.Items {
+		known[it.Change.Root+"\\"+it.Change.Path+"\\"+it.Change.Name] = true
+	}
+	for _, c := range expand(t) {
+		if known[c.Root+"\\"+c.Path+"\\"+c.Name] {
+			continue
+		}
+		orig, err := readState(c)
+		if err != nil {
+			return false, err
+		}
+		bk.Items = append(bk.Items, BackupItem{Change: c, Orig: orig})
+		changed = true
+	}
+	for p, st := range existingTasks(t) {
+		if _, ok := bk.Tasks[p]; ok {
+			continue
+		}
+		if bk.Tasks == nil {
+			bk.Tasks = map[string]string{}
+		}
+		bk.Tasks[p], changed = st, true
+	}
+	return changed, nil
 }
 
 type store struct {
@@ -105,13 +145,20 @@ func (e *Engine) isActive(t Tweak) bool {
 		g, err := activeScheme()
 		return err == nil && g == schemeHighPerf
 	}
-	for _, c := range expand(t) {
+	regs := expand(t)
+	for _, c := range regs {
 		st, err := readState(c)
 		if err != nil || !sameState(st, desired(c)) {
 			return false
 		}
 	}
-	return len(expand(t)) > 0
+	tasks := existingTasks(t)
+	for _, st := range tasks {
+		if st != "Disabled" {
+			return false
+		}
+	}
+	return len(regs)+len(tasks) > 0
 }
 
 type TweakView struct {
@@ -162,24 +209,17 @@ func (e *Engine) Apply(id string) (err error) {
 	bk, had := e.st.Items[id]
 	if !had {
 		bk = &Backup{At: time.Now().Format(time.RFC3339)}
-		if t.Power {
-			g, err := activeScheme()
-			if err != nil {
-				return err
-			}
-			bk.PrevPower = g
-		} else {
-			for _, c := range expand(t) {
-				orig, err := readState(c)
-				if err != nil {
-					return err
-				}
-				bk.Items = append(bk.Items, BackupItem{Change: c, Orig: orig})
-			}
-		}
+	}
+	changed, err := bk.ensure(t)
+	if err != nil {
+		return err
+	}
+	if !had || changed {
 		e.st.Items[id] = bk
 		if err := e.save(); err != nil {
-			delete(e.st.Items, id)
+			if !had {
+				delete(e.st.Items, id)
+			}
 			return fmt.Errorf("no se pudo guardar el backup, no se aplicó nada: %w", err)
 		}
 	}
@@ -215,6 +255,17 @@ func (e *Engine) doApply(t Tweak) error {
 			return fmt.Errorf("verificación fallida en %s\\%s\\%s", c.Root, c.Path, c.Name)
 		}
 	}
+	for p, st := range existingTasks(t) {
+		if st == "Disabled" {
+			continue
+		}
+		if err := setTask(p, false); err != nil {
+			return err
+		}
+		if now := existingTasks(t)[p]; now != "Disabled" {
+			return fmt.Errorf("verificación fallida en la tarea %s (estado %q)", p, now)
+		}
+	}
 	return nil
 }
 
@@ -227,6 +278,14 @@ func (e *Engine) restore(bk *Backup) error {
 	}
 	for _, it := range bk.Items {
 		if err := writeState(it.Change, it.Orig); err != nil {
+			errs = append(errs, err)
+		}
+	}
+	for p, st := range bk.Tasks {
+		if st == "Disabled" {
+			continue // ya estaba deshabilitada antes: se deja así
+		}
+		if err := setTask(p, true); err != nil {
 			errs = append(errs, err)
 		}
 	}

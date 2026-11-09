@@ -43,6 +43,8 @@ export namespace main {
 	    kind: string;
 	    d?: number;
 	    s?: string;
+	    mustExist?: boolean;
+	    ramKB?: boolean;
 	
 	    static createFrom(source: any = {}) {
 	        return new RegChange(source);
@@ -56,6 +58,8 @@ export namespace main {
 	        this.kind = source["kind"];
 	        this.d = source["d"];
 	        this.s = source["s"];
+	        this.mustExist = source["mustExist"];
+	        this.ramKB = source["ramKB"];
 	    }
 	}
 	export class TweakView {
@@ -69,6 +73,8 @@ export namespace main {
 	    vendor?: string;
 	    risk: string;
 	    minBuild?: number;
+	    maxBuild?: number;
+	    tasks?: string[];
 	    changes: RegChange[];
 	    active: boolean;
 	    canUndo: boolean;
@@ -91,6 +97,8 @@ export namespace main {
 	        this.vendor = source["vendor"];
 	        this.risk = source["risk"];
 	        this.minBuild = source["minBuild"];
+	        this.maxBuild = source["maxBuild"];
+	        this.tasks = source["tasks"];
 	        this.changes = this.convertValues(source["changes"], RegChange);
 	        this.active = source["active"];
 	        this.canUndo = source["canUndo"];

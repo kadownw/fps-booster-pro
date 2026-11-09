@@ -30,6 +30,19 @@ func rootKey(r string) (registry.Key, error) {
 	return 0, fmt.Errorf("raíz de registro no permitida: %q", r)
 }
 
+func keyExists(c RegChange) bool {
+	root, err := rootKey(c.Root)
+	if err != nil {
+		return false
+	}
+	k, err := registry.OpenKey(root, c.Path, registry.QUERY_VALUE)
+	if err != nil {
+		return false
+	}
+	k.Close()
+	return true
+}
+
 func readState(c RegChange) (RegState, error) {
 	root, err := rootKey(c.Root)
 	if err != nil {

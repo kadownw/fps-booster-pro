@@ -123,10 +123,11 @@ func windowsBuild() int {
 
 // supported indica si el tweak aplica a esta versión de Windows y a este hardware.
 func supported(t Tweak) bool {
-	if t.MinBuild > 0 && windowsBuild() < t.MinBuild {
+	b := windowsBuild()
+	if (t.MinBuild > 0 && b < t.MinBuild) || (t.MaxBuild > 0 && b > t.MaxBuild) {
 		return false
 	}
-	return t.Power || len(expand(t)) > 0
+	return t.Power || len(expand(t)) > 0 || len(existingTasks(t)) > 0
 }
 
 func windowsName() string {

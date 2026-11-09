@@ -16,6 +16,11 @@ type RegChange struct {
 	Kind string `json:"kind"` // "dword" | "sz"
 	D    uint32 `json:"d,omitempty"`
 	S    string `json:"s,omitempty"`
+	// MustExist: si la clave no existe en este equipo se omite el cambio (no se crean claves nuevas;
+	// se usa en servicios y loggers que pueden no estar instalados).
+	MustExist bool `json:"mustExist,omitempty"`
+	// RAMKB: el valor es la RAM total en KB (se calcula al aplicar).
+	RAMKB bool `json:"ramKB,omitempty"`
 }
 
 type Tweak struct {
@@ -29,26 +34,44 @@ type Tweak struct {
 	Vendor      string      `json:"vendor,omitempty"`   // "nvidia" | "amd" | "intel": se aplica a cada GPU de ese fabricante
 	Risk        string      `json:"risk"`               // "safe" | "moderate"
 	MinBuild    int         `json:"minBuild,omitempty"` // build mínima de Windows (0 = cualquiera)
+	MaxBuild    int         `json:"maxBuild,omitempty"` // build máxima de Windows (0 = sin límite)
+	Tasks       []string    `json:"tasks,omitempty"`    // tareas programadas que se deshabilitan
 	Changes     []RegChange `json:"changes"`
 }
 
 const gpuPlaceholder = "{GPU}"
 
-// expand reemplaza {GPU} por la clave de cada adaptador del fabricante. Para tweaks sin
-// fabricante devuelve los cambios tal cual.
+// expand reemplaza {GPU} por la clave de cada adaptador del fabricante, calcula valores
+// dinámicos y omite los cambios marcados MustExist cuya clave no existe en este equipo.
 func expand(t Tweak) []RegChange {
+	var base []RegChange
 	if t.Vendor == "" {
-		return t.Changes
+		base = t.Changes
+	} else {
+		for _, a := range gpuAdapters() {
+			if a.Vendor != t.Vendor {
+				continue
+			}
+			for _, c := range t.Changes {
+				c.Path = strings.Replace(c.Path, gpuPlaceholder, a.Sub, 1)
+				base = append(base, c)
+			}
+		}
 	}
 	var out []RegChange
-	for _, a := range gpuAdapters() {
-		if a.Vendor != t.Vendor {
+	for _, c := range base {
+		if c.MustExist && !keyExists(c) {
 			continue
 		}
-		for _, c := range t.Changes {
-			c.Path = strings.Replace(c.Path, gpuPlaceholder, a.Sub, 1)
-			out = append(out, c)
+		if c.RAMKB {
+			total, _, _ := memory()
+			kb := total / 1024
+			if kb > 0xffffffff {
+				kb = 0xffffffff
+			}
+			c.D = uint32(kb)
 		}
+		out = append(out, c)
 	}
 	return out
 }
@@ -78,10 +101,14 @@ const (
 var moderate = map[string]bool{"hags": true, "games_priority": true, "foreground_boost": true,
 	"net_throttle": true, "bg_apps": true, "nv_pstate": true, "mmcss_extra": true, "power_plan": true,
 	"power_throttle": true, "sticky_keys": true, "telemetry": true, "error_reporting": true,
-	"copilot": true, "ai_recall": true}
+	"copilot": true, "ai_recall": true, "svc_unneeded": true, "svc_background_manual": true,
+	"svc_xbox_manual": true, "svc_search_manual": true, "svc_print_manual": true, "svc_telemetry": true,
+	"svc_error_reporting": true, "autologgers": true, "fast_startup": true, "svchost_split": true,
+	"location_off": true, "cortana": true}
 
 func catalog() []Tweak {
 	list := append(rawCatalog(), extraCatalog()...)
+	list = append(list, servicesCatalog()...)
 	for i := range list {
 		list[i].Risk = "safe"
 		if moderate[list[i].ID] {

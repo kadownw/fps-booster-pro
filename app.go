@@ -19,6 +19,7 @@ type App struct {
 func NewApp() *App {
 	e, err := NewEngine()
 	a := &App{engine: e}
+	go taskStates() // precalienta la consulta de tareas programadas (tarda ~2 s)
 	if err != nil {
 		a.initEr = err.Error()
 	}
