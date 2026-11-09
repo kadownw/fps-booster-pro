@@ -15,7 +15,7 @@ func TestAdminRoundTrip(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	for _, id := range []string{"usb_recovery", "svc_xbox_manual", "svc_unneeded", "update_pause", "error_tasks", "telemetry_tasks", "svchost_split", "mpo_off", "flip_immediate", "nic_power_off", "bg_apps_policy", "updates_pause", "trim_on"} {
+	for _, id := range []string{"usb_recovery", "svc_xbox_manual", "svc_unneeded", "update_pause", "error_tasks", "telemetry_tasks", "svchost_split", "mpo_off", "flip_immediate", "nic_power_off", "bg_apps_policy", "updates_pause", "trim_on", "store_autoupdate_off", "timer_resolution", "startup_sound_off", "memory_compression_off", "gpu_msi_mode", "nv_driver_prefs", "nv_hdcp_off", "bg_apps_policy"} {
 		tw, _ := findTweak(id)
 		if !supported(tw) {
 			t.Logf("%s: no aplica a este equipo, se omite", id)

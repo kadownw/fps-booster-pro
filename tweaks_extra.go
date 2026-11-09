@@ -119,6 +119,7 @@ func extraCatalog() []Tweak {
 			Description: "Quita el widget de noticias de la barra de tareas, que consume memoria y red en segundo plano.",
 			Changes: []RegChange{
 				dw("HKLM", `SOFTWARE\Policies\Microsoft\Dsh`, "AllowNewsAndInterests", 0),
+				dw("HKLM", `SOFTWARE\Microsoft\PolicyManager\default\NewsAndInterests\AllowNewsAndInterests`, "value", 0),
 				dw("HKCU", `Software\Microsoft\Windows\CurrentVersion\Feeds`, "ShellFeedsTaskbarViewMode", 0),
 			},
 		},

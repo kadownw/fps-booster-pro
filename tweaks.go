@@ -54,8 +54,16 @@ type Tweak struct {
 	Nvidia []NvSetting `json:"nvidia,omitempty"`
 	// Cmd: ajustes que Windows solo permite cambiar con un comando (p. ej. hibernación).
 	Cmd *CmdSpec `json:"-"`
+	// PS: ajuste cuyo estado solo se consulta/cambia con un comando de PowerShell fijo (definido aquí, nunca armado con texto del usuario).
+	PS *PSSpec `json:"-"`
 	// Once: acción que se ejecuta una vez y no deja nada que revertir (botón «Aplicar», sin interruptor).
 	Once bool `json:"once,omitempty"`
+}
+
+// PSSpec: estado = salida de State (texto); Want = valor que busca el ajuste; Apply/Revert = comandos fijos.
+type PSSpec struct {
+	State, Want   string
+	Apply, Revert string
 }
 
 // CmdSpec: comando permitido (solo powercfg) con su estado observable en el registro.
@@ -66,8 +74,9 @@ type CmdSpec struct {
 }
 
 const (
-	gpuPlaceholder = "{GPU}"
-	nicPlaceholder = "{NIC}" // cada adaptador de red físico (clase Net)
+	gpuPlaceholder  = "{GPU}"
+	nicPlaceholder  = "{NIC}"  // cada adaptador de red físico (clase Net)
+	dispPlaceholder = "{DISP}" // cada dispositivo de video PCI (para MSI)
 )
 
 // expand reemplaza {GPU} por la clave de cada adaptador del fabricante, calcula valores
@@ -80,6 +89,14 @@ func expand(t Tweak) []RegChange {
 				for _, sub := range nicAdapters() {
 					cc := c
 					cc.Path = strings.Replace(c.Path, nicPlaceholder, sub, 1)
+					base = append(base, cc)
+				}
+				continue
+			}
+			if strings.Contains(c.Path, dispPlaceholder) { // un cambio por dispositivo de video PCI
+				for _, inst := range displayDevices() {
+					cc := c
+					cc.Path = strings.Replace(c.Path, dispPlaceholder, inst, 1)
 					base = append(base, cc)
 				}
 				continue
@@ -153,13 +170,18 @@ var moderate = map[string]bool{"hags": true, "games_priority": true, "foreground
 	"svc_xbox_manual": true, "svc_search_manual": true, "svc_print_manual": true, "svc_telemetry": true,
 	"svc_error_reporting": true, "autologgers": true, "fast_startup": true, "svchost_split": true,
 	"location_off": true, "cortana": true, "south_power_plan": true, "nvidia_profile": true, "hibernate_off": true,
-	"mpo_off": true, "flip_immediate": true, "nic_power_off": true, "bg_apps_policy": true, "updates_pause": true}
+	"mpo_off": true, "flip_immediate": true, "nic_power_off": true, "bg_apps_policy": true, "updates_pause": true,
+	"memory_compression_off": true, "timer_resolution": true, "nv_hdcp_off": true, "nvidia_perf_profile": true,
+	"amd_graphics_perf": true, "gpu_msi_mode": true, "nv_driver_prefs": true, "svc_max_performance": true}
 
 func catalog() []Tweak {
 	list := append(rawCatalog(), extraCatalog()...)
 	list = append(list, servicesCatalog()...)
 	list = append(list, paragonCatalog()...)
 	list = append(list, ultimateCatalog()...)
+	list = append(list, setupCatalog()...)
+	list = append(list, maxPerfCatalog()...)
+	dedupeMaxPerf(list)
 	for i := range list {
 		list[i].Risk = "safe"
 		if moderate[list[i].ID] {

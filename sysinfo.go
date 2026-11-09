@@ -138,7 +138,7 @@ func supported(t Tweak) bool {
 		return true
 	case len(t.Nvidia) > 0:
 		return nvAvailable()
-	case t.Cmd != nil:
+	case t.PS != nil, t.Cmd != nil:
 		return true
 	}
 	return len(expand(t)) > 0 || len(existingTasks(t)) > 0
@@ -245,6 +245,35 @@ func nicAdapters() []string {
 			continue
 		}
 		out = append(out, n)
+	}
+	return out
+}
+
+const displayClassGUID = "{4d36e968-e325-11ce-bfc1-08002be10318}"
+
+// displayDevices devuelve la ruta "PCI\VEN_...\instancia" de cada dispositivo de video PCI
+// (clase Display), para ajustes por dispositivo bajo Enum.
+func displayDevices() []string {
+	root, err := registry.OpenKey(registry.LOCAL_MACHINE, `SYSTEM\CurrentControlSet\Enum\PCI`, registry.ENUMERATE_SUB_KEYS)
+	if err != nil {
+		return nil
+	}
+	defer root.Close()
+	hw, _ := root.ReadSubKeyNames(-1)
+	var out []string
+	for _, h := range hw {
+		hk, err := registry.OpenKey(registry.LOCAL_MACHINE, `SYSTEM\CurrentControlSet\Enum\PCI\`+h, registry.ENUMERATE_SUB_KEYS)
+		if err != nil {
+			continue
+		}
+		insts, _ := hk.ReadSubKeyNames(-1)
+		hk.Close()
+		for _, in := range insts {
+			p := `SYSTEM\CurrentControlSet\Enum\PCI\` + h + `\` + in
+			if strings.EqualFold(regString(registry.LOCAL_MACHINE, p, "ClassGUID"), displayClassGUID) {
+				out = append(out, `PCI\`+h+`\`+in)
+			}
+		}
 	}
 	return out
 }

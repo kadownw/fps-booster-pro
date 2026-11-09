@@ -38,24 +38,26 @@ func TestNvApplyRestore(t *testing.T) {
 	if os.Getenv("FBP_ADMIN_TESTS") != "1" || !isAdmin() || !nvAvailable() {
 		t.Skip("define FBP_ADMIN_TESTS=1, ejecuta como administrador y con NVIDIA")
 	}
-	tw, _ := findTweak("nvidia_profile")
-	orig, err := nvReadOriginals(tw.Nvidia)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if err := nvApply(tw.Nvidia); err != nil {
-		t.Fatal(err)
-	}
-	if !nvIsActive(tw.Nvidia) {
-		t.Fatal("no quedó aplicado")
-	}
-	if err := nvRestore(orig); err != nil {
-		t.Fatal(err)
-	}
-	after, _ := nvReadOriginals(tw.Nvidia)
-	for i := range orig {
-		if after[i].Value != orig[i].Value || after[i].Predefined != orig[i].Predefined {
-			t.Fatalf("ajuste 0x%X no volvió: %+v vs %+v", orig[i].ID, after[i], orig[i])
+	for _, id := range []string{"nvidia_profile", "nvidia_perf_profile"} {
+		tw, _ := findTweak(id)
+		orig, err := nvReadOriginals(tw.Nvidia)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := nvApply(tw.Nvidia); err != nil {
+			t.Fatalf("%s: %v", id, err)
+		}
+		if !nvIsActive(tw.Nvidia) {
+			t.Fatalf("%s: no quedó aplicado", id)
+		}
+		if err := nvRestore(orig); err != nil {
+			t.Fatalf("%s: %v", id, err)
+		}
+		after, _ := nvReadOriginals(tw.Nvidia)
+		for i := range orig {
+			if after[i].Value != orig[i].Value || after[i].Predefined != orig[i].Predefined {
+				t.Fatalf("%s: ajuste 0x%X no volvió: %+v vs %+v", id, orig[i].ID, after[i], orig[i])
+			}
 		}
 	}
 }

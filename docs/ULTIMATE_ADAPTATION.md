@@ -39,3 +39,10 @@ Ya estaban cubiertos por ajustes propios: plan de energía (`29 Power Plan`), hi
 
 Todos los ajustes adaptados siguen siendo hipótesis de rendimiento: **no están medidos con FPS**. La medición con PresentMon es la
 prioridad 0 del plan (`docs/research/10_IMPLEMENTATION_ROADMAP.md`).
+## Lote 2: Setup y Advanced (resumen)
+
+Adaptado: compresión de memoria, descarga automática de la Tienda, HDCP, MSI solo en la GPU, perfil NVIDIA (10 IDs verificados), preferencias de AMD, temporizador nativo (sin servicio C#), Game Bar del control, Widgets por PolicyManager, Copilot y Game Bar como acciones únicas, Explorer/sonido/ducking, **Servicios en máximo rendimiento** (`svc_max_performance`, reversible) y **Quitar BitLocker** (`bitlocker_off`, acción única).
+
+`svc_max_performance` parte de los 230 servicios con Start=4 del script `17 Services` y excluye los que rompen el uso diario: firewall (BFE, mpssvc), EventLog, PlugPlay, SamSs, red y Wi-Fi, Bluetooth, HID, Windows Update, VSS, Tienda/Xbox (TokenBroker, ClipSVC, Xbl*), GameInputSvc y GraphicsPerfSvc. Las claves que ya controlan otros ajustes se quitan de esta lista para que cada clave tenga un solo dueño al revertir.
+
+No adaptado: Keys (activación), Startup Apps (ya existe la página), BitLocker «On» (solo abre el panel), Notepad, y lo que exige TrustedInstaller o descargas externas.

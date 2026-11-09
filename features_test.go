@@ -4,6 +4,7 @@ import (
 	"encoding/hex"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
@@ -213,4 +214,108 @@ func TestNICAdaptersAreNotVirtual(t *testing.T) {
 		}
 	}
 	t.Logf("adaptadores físicos detectados: %d", len(nicAdapters()))
+}
+
+func TestPSOnlyRunsDeclaredCommands(t *testing.T) {
+	if err := runAllowedPS("Get-Process"); err == nil {
+		t.Fatal("ejecutó un comando de PowerShell que no está en el catálogo")
+	}
+	if err := runAllowedPS("Disable-MMAgent -MemoryCompression; calc"); err == nil {
+		t.Fatal("aceptó un comando con algo extra pegado")
+	}
+	tw, _ := findTweak("memory_compression_off")
+	if tw.PS == nil || !allowedPS(tw.PS.Apply) || !allowedPS(tw.PS.Revert) {
+		t.Fatal("los comandos declarados deberían estar permitidos")
+	}
+}
+
+func TestAppxPatternsAreFixed(t *testing.T) {
+	for _, bad := range []string{"x'; calc; '", "a b", "", "a|b", "$(calc)"} {
+		if _, err := removeAppx(bad); err == nil {
+			t.Errorf("aceptó el patrón %q", bad)
+		}
+	}
+}
+
+func TestTimerResolutionLimits(t *testing.T) {
+	coarse, fine, ok := timerLimits()
+	if !ok || fine == 0 || fine > coarse {
+		t.Fatalf("límites inválidos: %d %d %v", coarse, fine, ok)
+	}
+	if cur, ok := setTimerBoost(true); !ok || cur == 0 {
+		t.Fatalf("no se pudo pedir la resolución máxima: %d %v", cur, ok)
+	}
+	setTimerBoost(false) // se libera siempre
+	t.Logf("resolución: peor %.2f ms, mejor %.2f ms", float64(coarse)/1e4, float64(fine)/1e4)
+}
+
+func TestDisplayDevices(t *testing.T) {
+	d := displayDevices()
+	for _, p := range d {
+		if !strings.HasPrefix(p, `PCI\`) {
+			t.Errorf("ruta inesperada: %s", p)
+		}
+	}
+	t.Logf("dispositivos de video PCI: %v", d)
+}
+
+func TestExpandSZKindIsPreserved(t *testing.T) {
+	c := RegChange{Root: "HKCU", Path: `Software\SouthTweaksTest`, Name: "Esz"}
+	defer registry.DeleteKey(registry.CURRENT_USER, c.Path)
+	k, _, err := registry.CreateKey(registry.CURRENT_USER, c.Path, registry.SET_VALUE)
+	if err != nil {
+		t.Fatal(err)
+	}
+	k.SetExpandStringValue("Esz", `%SystemRoot%\Media\x.wav`)
+	k.Close()
+	orig, _ := readState(c)
+	if orig.Kind != "esz" {
+		t.Fatalf("no detectó REG_EXPAND_SZ: %+v", orig)
+	}
+	writeState(c, RegState{Exists: true, Kind: "sz", S: ""})
+	writeState(c, orig) // restaurar
+	k2, _ := registry.OpenKey(registry.CURRENT_USER, c.Path, registry.QUERY_VALUE)
+	defer k2.Close()
+	_, typ, _ := k2.GetValue("Esz", nil)
+	k3, _ := registry.OpenKey(registry.CURRENT_USER, c.Path, registry.SET_VALUE)
+	k3.DeleteValue("Esz")
+	k3.Close()
+	if typ != registry.EXPAND_SZ {
+		t.Fatalf("el tipo cambió al restaurar: %d", typ)
+	}
+}
+
+func TestMaxPerfServicesAreSafeAndUnshared(t *testing.T) {
+	mp, ok := findTweak("svc_max_performance")
+	if !ok || len(mp.Changes) < 100 {
+		t.Fatalf("svc_max_performance incompleto: %d cambios", len(mp.Changes))
+	}
+	protected := []string{"BFE", "mpssvc", "EventLog", "EventSystem", "PlugPlay", "SamSs", "Themes", "WlanSvc",
+		"NlaSvc", "Dnscache", "AudioSrv", "Audiosrv", "AudioEndpointBuilder", "TokenBroker", "ClipSVC", "wuauserv",
+		"UsoSvc", "VSS", "bthserv", "hidserv", "LanmanWorkstation", "WinDefend", "Winmgmt", "RpcSs", "DcomLaunch"}
+	own := map[string]bool{}
+	for _, c := range mp.Changes {
+		if c.D != startDisabled {
+			t.Fatalf("%s debe quedar deshabilitado", c.Path)
+		}
+		own[strings.ToLower(c.Path)] = true
+		for _, p := range protected {
+			if strings.EqualFold(c.Path, `SYSTEM\CurrentControlSet\Services\`+p) {
+				t.Fatalf("servicio protegido en la lista: %s", p)
+			}
+		}
+	}
+	for _, o := range catalog() {
+		if o.ID == mp.ID {
+			continue
+		}
+		for _, c := range o.Changes {
+			if own[strings.ToLower(c.Path)] && strings.EqualFold(c.Name, "Start") {
+				t.Fatalf("%s comparte la clave %s con svc_max_performance", o.ID, c.Path)
+			}
+		}
+	}
+	if b, ok := findTweak("bitlocker_off"); !ok || !b.Once || !b.Admin {
+		t.Fatal("bitlocker_off debe ser una acción única de administrador")
+	}
 }

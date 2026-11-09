@@ -28,6 +28,8 @@ type Backup struct {
 	Nvidia []NvOrig `json:"nvidia,omitempty"`
 	// Cmd: estado previo y argumentos para volver (solo powercfg).
 	CmdOrig   *RegState `json:"cmdOrig,omitempty"`
+	PSOrig    *string   `json:"psOrig,omitempty"`
+	PSRevert  string    `json:"psRevert,omitempty"`
 	CmdRevert []string  `json:"cmdRevert,omitempty"`
 	At        string    `json:"at"`
 }
@@ -52,6 +54,13 @@ func (bk *Backup) ensure(t Tweak) (bool, error) {
 			return false, err
 		}
 		bk.Nvidia, changed = orig, true
+	}
+	if t.PS != nil && bk.PSOrig == nil {
+		cur, err := psState(t.PS)
+		if err != nil {
+			return false, err
+		}
+		bk.PSOrig, bk.PSRevert, changed = &cur, t.PS.Revert, true
 	}
 	if t.Cmd != nil && bk.CmdOrig == nil {
 		st, err := readState(t.Cmd.State)
@@ -180,6 +189,10 @@ func (e *Engine) isActive(t Tweak) bool {
 	}
 	if len(t.Nvidia) > 0 {
 		return nvIsActive(t.Nvidia)
+	}
+	if t.PS != nil {
+		cur, err := psState(t.PS)
+		return err == nil && cur == t.PS.Want
 	}
 	if t.Cmd != nil {
 		st, err := readState(t.Cmd.State)
@@ -313,6 +326,15 @@ func (e *Engine) doApply(t Tweak) error {
 	if len(t.Nvidia) > 0 {
 		return nvApply(t.Nvidia)
 	}
+	if t.PS != nil {
+		if err := runAllowedPS(t.PS.Apply); err != nil {
+			return err
+		}
+		if cur, err := psState(t.PS); err != nil || cur != t.PS.Want {
+			return errors.New("no se pudo verificar el cambio")
+		}
+		return nil
+	}
 	if t.Cmd != nil {
 		if err := runAllowedPowercfg(t.Cmd.Apply); err != nil {
 			return err
@@ -364,6 +386,13 @@ func (e *Engine) restore(bk *Backup) error {
 	if bk.Nvidia != nil {
 		if err := nvRestore(bk.Nvidia); err != nil {
 			errs = append(errs, err)
+		}
+	}
+	if bk.PSOrig != nil && bk.PSRevert != "" {
+		if spec := psSpecForRevert(bk.PSRevert); spec != nil && *bk.PSOrig != spec.Want {
+			if err := runAllowedPS(bk.PSRevert); err != nil {
+				errs = append(errs, err)
+			}
 		}
 	}
 	if bk.CmdOrig != nil && len(bk.CmdRevert) > 0 {

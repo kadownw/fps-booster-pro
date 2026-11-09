@@ -76,36 +76,144 @@ const brandOf = (t) => t.vendor || (t.nvidia && t.nvidia.length ? 'nvidia' : '')
 const catIco = (c) => h('div', { class: 'cat-ico', 'data-cat': c }, icon(CAT_ICON[c] || 'cog'));
 const fmtWhen = (iso) => new Date(iso).toLocaleString('es-AR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' });
 
-async function runOnceFlow(t) {
-  if (S.busy) return;
-  const r = await dialog(t.title, [h('p', {}, t.description), h('p', { class: 'warn' }, 'Se ejecuta una sola vez y no se puede deshacer.')], { ok: 'Aplicar' });
-  if (!r.ok) return;
-  S.busy = true; paintState();
-  try {
-    const res = await RunOnce(t.id);
-    if (res.error) toast(res.error, 'err'); else toast(res.message || 'Listo', 'ok');
-  } catch (e) {
-    toast(String(e), 'err');
-  } finally {
-    S.busy = false;
-    await refresh();
+// ---------- cola de cambios ----------
+// Nada se aplica al mover un interruptor: queda «en cola» y se aplica todo junto desde la barra
+// de abajo. La cola guarda solo lo que DIFIERE del estado real (activar, desactivar o acción única).
+const Q = new Map();                            // id -> 'apply' | 'revert' | 'once'
+const qTweak = (id) => S.tweaks.find((t) => t.id === id);
+
+function queueSet(t, action) {
+  // action: 'apply' | 'revert' | 'once' | null (quitar)
+  if (action === null) Q.delete(t.id); else Q.set(t.id, action);
+  paintQueue();
+  const r = S.rows.get(t.id); if (r) paintRow(r, t);
+}
+
+function pruneQueue() {
+  // Si el estado real ya coincide con lo pedido (p. ej. tras aplicar), se saca de la cola.
+  for (const [id, a] of [...Q]) {
+    const t = qTweak(id);
+    if (!t || t.disabled || (a === 'apply' && t.active) || (a === 'revert' && !t.active)) Q.delete(id);
   }
+}
+
+function paintQueue() {
+  if (!el.queue) return;
+  const items = [...Q].map(([id, a]) => ({ t: qTweak(id), a })).filter((x) => x.t);
+  el.queue.hidden = items.length === 0;
+  if (!items.length) return;
+  const n = (a) => items.filter((x) => x.a === a).length;
+  const parts = [n('apply') && `${n('apply')} por activar`, n('revert') && `${n('revert')} por desactivar`,
+    n('once') && `${n('once')} acción${n('once') > 1 ? 'es' : ''} única${n('once') > 1 ? 's' : ''}`].filter(Boolean);
+  el.queueCount.textContent = String(items.length);
+  el.queueLabel.textContent = items.length === 1 ? 'proceso por aplicar' : 'procesos por aplicar';
+  el.queueParts.textContent = parts.join(' · ');
+  el.queueApply.disabled = S.busy;
+  el.queueClear.disabled = S.busy;
+}
+
+const QLABEL = { apply: 'Activar', revert: 'Desactivar', once: 'Ejecutar' };
+
+async function applyQueue() {
+  if (S.busy || !Q.size) return;
+  pruneQueue();
+  // Orden: primero lo que se desactiva, después lo que se activa y al final las acciones únicas.
+  const rank = { revert: 0, apply: 1, once: 2 };
+  const items = [...Q].map(([id, a]) => ({ t: qTweak(id), a })).filter((x) => x.t).sort((x, y) => rank[x.a] - rank[y.a]);
+  if (!items.length) { paintQueue(); return; }
+  const canRestore = S.info.admin && items.some((x) => x.a !== 'revert');
+  const onces = items.filter((x) => x.a === 'once');
+  const body = [
+    h('p', {}, `Se van a ejecutar ${items.length} proceso${items.length > 1 ? 's' : ''}, uno detrás del otro.`),
+    h('ul', { class: 'mini' }, items.slice(0, 10).map((x) => h('li', {}, h('b', {}, QLABEL[x.a] + ': '), x.t.title)),
+      items.length > 10 && h('li', { class: 'k' }, `y ${items.length - 10} más…`)),
+    onces.length > 0 && h('p', { class: 'warn' }, `${onces.length === 1 ? 'Hay 1 acción única' : `Hay ${onces.length} acciones únicas`} que no se pueden deshacer.`),
+  ];
+  const r = await dialog('Aplicar cambios', body, { ok: 'Aplicar', check: canRestore ? { label: 'Crear un punto de restauración antes', checked: true } : null });
+  if (!r.ok) return;
+  runQueue(items, r.checked);
+}
+
+function runQueue(items, restorePoint) {
+  S.busy = true; paintState(); paintQueue();
+  const rows = items.map((x) => {
+    const st = h('span', { class: 'qs wait' });
+    const li = h('li', { class: 'qi' }, st, h('span', { class: 'qt' }, x.t.title), h('span', { class: 'qa' }, QLABEL[x.a]));
+    return { ...x, st, li };
+  });
+  const bar = h('div', { class: 'pbar-fill' });
+  const head = h('h3', {}, 'Aplicando cambios…');
+  const cur = h('p', { class: 'qcur' }, 'Preparando…');
+  const pct = h('b', { class: 'qpct' }, '0%');
+  const foot = h('div', { class: 'actions' });
+  const list = h('ul', { class: 'qlist' }, rows.map((x) => x.li));
+  const scrim = h('div', { class: 'scrim loading' },
+    h('div', { class: 'modal loader' }, head, cur,
+      h('div', { class: 'pbar' }, bar), h('div', { class: 'pinfo' }, pct, h('span', { class: 'k qn' }, `0 de ${rows.length}`)),
+      list, foot));
+  document.body.append(scrim);
+  const qn = scrim.querySelector('.qn');
+  const setProgress = (done) => {
+    const p = Math.round((done / rows.length) * 100);
+    bar.style.width = p + '%'; pct.textContent = p + '%'; qn.textContent = `${done} de ${rows.length}`;
+  };
+  const mark = (x, cls, txt) => { x.st.className = 'qs ' + cls; if (txt) x.li.title = txt; };
+
+  (async () => {
+    const res = { ok: 0, fail: [], reboot: false };
+    try {
+      if (restorePoint) {
+        cur.textContent = 'Creando punto de restauración…';
+        const err = await CreateRestorePoint();
+        if (err) toast('No se creó el punto de restauración: ' + err, 'err');
+      }
+      let done = 0;
+      for (const x of rows) {
+        cur.textContent = `${QLABEL[x.a]}: ${x.t.title}`;
+        x.st.className = 'qs run';
+        x.li.scrollIntoView({ block: 'nearest' });
+        let err = '', msg = '';
+        try {
+          if (x.a === 'once') { const o = await RunOnce(x.t.id); err = o.error; msg = o.message; }
+          else err = await (x.a === 'apply' ? ApplyTweak : RevertTweak)(x.t.id);
+        } catch (e) { err = String(e); }
+        if (err) { mark(x, 'bad', err); res.fail.push(`${x.t.title}: ${err}`); x.li.append(h('span', { class: 'qerr' }, err)); }
+        else { mark(x, 'ok', msg); res.ok++; if (x.t.reboot) res.reboot = true; if (msg) x.li.append(h('span', { class: 'qerr okmsg' }, msg)); }
+        setProgress(++done);
+        await new Promise((r) => setTimeout(r, 120));      // deja ver el avance aunque el ajuste sea instantáneo
+      }
+    } finally {
+      S.busy = false;
+      for (const x of rows) { const cur2 = Q.get(x.t.id); if (cur2 === x.a && !res.fail.some((f) => f.startsWith(x.t.title + ':'))) Q.delete(x.t.id); }
+      await refresh();
+      pruneQueue(); paintQueue();
+    }
+    head.textContent = res.fail.length ? 'Terminó con errores' : 'Listo';
+    cur.textContent = `${res.ok} aplicado${res.ok === 1 ? '' : 's'}` + (res.fail.length ? `, ${res.fail.length} con error` : '') +
+      (res.reboot ? '. Reiniciá Windows para que se noten todos los cambios.' : '.');
+    scrim.classList.add('finished');
+    foot.append(h('button', { class: 'primary', onclick: () => scrim.remove() }, 'Cerrar'));
+  })();
 }
 
 function buildRow(t) {
   const brand = brandOf(t);
   let input = null, btn = null, control;
   if (t.once) {
-    btn = h('button', { class: 'primary sm', onclick: () => runOnceFlow(S.rows.get(t.id).t) }, 'Aplicar');
+    btn = h('button', {
+      class: 'sm', onclick: () => {
+        const cur = S.rows.get(t.id).t;
+        queueSet(cur, Q.get(cur.id) === 'once' ? null : 'once');
+      },
+    }, 'Agregar');
     control = btn;
   } else {
     input = h('input', {
       type: 'checkbox',
-      onchange: async (e) => {
+      onchange: (e) => {
+        const cur = S.rows.get(t.id).t;
         const want = e.target.checked;
-        e.target.checked = !want;            // el estado real lo decide el motor
-        if (want && !(await ask(t.title, t.description))) return;
-        run(want ? ApplyTweak : RevertTweak, t.id, want ? 'Aplicado' : 'Revertido');
+        queueSet(cur, want === cur.active ? null : (want ? 'apply' : 'revert'));
       },
     });
     control = h('label', { class: 'switch' }, input, h('span'));
@@ -128,8 +236,14 @@ function paintRow(r, t) {
   r.row.classList.toggle('on', t.active);
   r.row.classList.toggle('off', t.disabled);
   const blocked = t.disabled || (t.blocked && !t.active);
-  if (r.input) { r.input.checked = t.active; r.input.disabled = S.busy || blocked; }
-  if (r.btn) r.btn.disabled = S.busy || t.disabled || t.blocked;
+  const q = Q.get(t.id);
+  r.row.classList.toggle('queued', !!q);
+  if (r.input) { r.input.checked = q ? q === 'apply' : t.active; r.input.disabled = S.busy || blocked; }
+  if (r.btn) {
+    r.btn.disabled = S.busy || t.disabled || t.blocked;
+    r.btn.textContent = q === 'once' ? 'En la cola ✓' : 'Agregar';
+    r.btn.classList.toggle('primary', q === 'once');
+  }
   r.row.title = t.disabled ? 'No aplica a tu equipo' : (t.blocked ? 'Requiere administrador' : '');
   r.last.textContent = t.once && t.lastRun ? `Última vez: ${fmtWhen(t.lastRun)}` : '';
   r.tags.replaceChildren(...[
@@ -179,6 +293,7 @@ function paintState() {
   if (el.adminBanner) el.adminBanner.hidden = !(S.info && !S.info.admin && S.tweaks.some((t) => t.blocked));
   if (el.activeCount && el.activeCount.isConnected) el.activeCount.textContent = `${S.tweaks.filter((t) => t.active).length} de ${S.tweaks.filter((t) => !t.disabled).length}`;
   document.querySelectorAll('[data-needbusy]').forEach((b) => { b.disabled = S.busy; });
+  paintQueue();
 }
 
 async function refresh() {
@@ -187,7 +302,9 @@ async function refresh() {
   const rebuild = newIds !== S.tweaks.map((t) => t.id).join();
   S.tweaks = list;
   if (rebuild) { S.rows.clear(); for (const t of list) buildRow(t); }
+  pruneQueue();
   paintState();
+  paintQueue();
   if (rebuild) { paintChips(); paintSettingsList(); }
 }
 
@@ -489,7 +606,7 @@ function pageSettings() {
   el.simBanner = h('div', { class: 'banner info', hidden: true }, 'Modo simulación: no se modifica nada en tu Windows.');
   setTimeout(() => { paintChips(); paintSettingsList(); paintState(); }, 0);
   return [
-    pageHead('Optimizar', 'Los ajustes con interruptor se pueden revertir. Las acciones únicas, no.', el.search),
+    pageHead('Optimizar', 'Elegí lo que querés activar o desactivar y aplicalo todo junto desde la barra de abajo. Las acciones únicas no se pueden deshacer.', el.search),
     el.simBanner,
     h('div', { class: 'toolbar' }, el.chips,
       h('div', { class: 'row' }, h('label', { class: 'chk' }, el.simBox, 'Modo simulación'), el.revertAll)),
@@ -597,6 +714,14 @@ function build() {
   el.busy = h('div', { class: 'busy-bar', hidden: true });
   el.adminBanner = h('div', { class: 'banner', hidden: true }, 'Algunos ajustes necesitan permisos de administrador.',
     h('button', { onclick: async () => { const e = await RelaunchAsAdmin(); if (e) toast(e, 'err'); } }, 'Reiniciar como administrador'));
+  el.queueCount = h('b', { class: 'q-n' }, '0');
+  el.queueLabel = h('span', { class: 'q-l' }, 'procesos por aplicar');
+  el.queueParts = h('span', { class: 'q-p k' });
+  el.queueClear = h('button', { onclick: () => { for (const id of [...Q.keys()]) { Q.delete(id); } for (const r of S.rows.values()) paintRow(r, r.t); paintQueue(); } }, 'Vaciar');
+  el.queueApply = h('button', { class: 'primary', onclick: applyQueue }, 'Aplicar');
+  el.queue = h('div', { class: 'queue', hidden: true },
+    h('div', { class: 'q-info' }, el.queueCount, h('div', {}, el.queueLabel, el.queueParts)),
+    h('div', { class: 'row' }, el.queueClear, el.queueApply));
   el.main = h('main', {}, el.adminBanner, el.content);
   document.getElementById('app').replaceChildren(
     h('aside', {},
@@ -605,7 +730,7 @@ function build() {
       h('div', { class: 'user' }, h('div', { class: 'avatar' }, (S.info.user || '?').slice(0, 1).toUpperCase()),
         h('div', {}, h('b', {}, S.info.user || 'Usuario'), h('small', {}, S.info.admin ? 'Administrador' : 'Sin permisos de admin')))),
     el.main);
-  document.body.append(el.busy, toasts);
+  document.body.append(el.busy, el.queue, toasts);
 }
 
 // ---------- muestras en vivo ----------

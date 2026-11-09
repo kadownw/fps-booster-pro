@@ -192,6 +192,7 @@ func (m *GameMonitor) save() {
 // tick: un paso del detector (se llama cada ~3 s).
 func (m *GameMonitor) tick() {
 	g := m.scan()
+	syncTimer(g != nil) // resolución de temporizador alta solo mientras hay un juego abierto
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	now := m.now()

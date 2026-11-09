@@ -210,3 +210,42 @@ func runAllowedPowercfg(args []string) error {
 	}
 	return nil
 }
+
+// ---- comandos de PowerShell fijos ----
+
+// allowedPS: solo se ejecutan los comandos Apply/Revert declarados en el catálogo (texto fijo del código).
+func allowedPS(cmd string) bool {
+	for _, t := range catalog() {
+		if t.PS != nil && (t.PS.Apply == cmd || t.PS.Revert == cmd) {
+			return true
+		}
+	}
+	return false
+}
+
+func runAllowedPS(cmd string) error {
+	if !allowedPS(cmd) {
+		return fmt.Errorf("comando de PowerShell no permitido: %q", cmd)
+	}
+	if out, err := runPS(cmd); err != nil {
+		return fmt.Errorf("%s: %s", cmd, strings.TrimSpace(out))
+	}
+	return nil
+}
+
+func psState(s *PSSpec) (string, error) {
+	out, err := runPS(s.State)
+	if err != nil {
+		return "", fmt.Errorf("no se pudo leer el estado: %s", strings.TrimSpace(out))
+	}
+	return strings.TrimSpace(out), nil
+}
+
+func psSpecForRevert(revert string) *PSSpec {
+	for _, t := range catalog() {
+		if t.PS != nil && t.PS.Revert == revert {
+			return t.PS
+		}
+	}
+	return nil
+}

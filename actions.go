@@ -88,6 +88,34 @@ func (e *Engine) RunOnce(id string) (summary string, err error) {
 		if len(failed) > 0 {
 			summary += " (omitidos: " + strings.Join(failed, ", ") + ")"
 		}
+	case "remove_copilot_app":
+		n, err := removeAppx("*Copilot*")
+		if err != nil {
+			return "", err
+		}
+		summary = fmt.Sprintf("Copilot desinstalado (%d paquete/s).", n)
+	case "remove_gamebar_app":
+		// Solo la superposición Xbox Game Bar: NO se tocan Gaming Services ni la app de Xbox
+		// (los necesitan Game Pass y varios juegos de la Tienda).
+		n, err := removeAppx("Microsoft.XboxGamingOverlay")
+		if err != nil {
+			return "", err
+		}
+		summary = fmt.Sprintf("Xbox Game Bar desinstalada (%d paquete/s).", n)
+	case "bitlocker_off":
+		// Receta fija: solo unidades que tienen BitLocker activo o cifrado parcial.
+		out, err := runPS(`$v = @(Get-BitLockerVolume -ErrorAction Stop | Where-Object { $_.ProtectionStatus -eq 'On' -or $_.VolumeStatus -ne 'FullyDecrypted' }); $v.Count; $v | ForEach-Object { Disable-BitLocker -MountPoint $_.MountPoint -ErrorAction SilentlyContinue | Out-Null }`)
+		if err != nil && strings.TrimSpace(out) == "" {
+			return "", errors.New("no se pudo consultar BitLocker (¿tu edición de Windows lo incluye?)")
+		}
+		first, _, _ := strings.Cut(strings.TrimSpace(out), "\n")
+		var n int
+		fmt.Sscanf(strings.TrimSpace(first), "%d", &n)
+		if n == 0 {
+			summary = "Ninguna unidad tenía BitLocker activo."
+		} else {
+			summary = fmt.Sprintf("BitLocker se está quitando de %d unidad/es; el descifrado sigue en segundo plano.", n)
+		}
 	default:
 		return "", fmt.Errorf("acción sin receta: %s", id)
 	}
@@ -95,3 +123,21 @@ func (e *Engine) RunOnce(id string) (summary string, err error) {
 	e.saveRuns()
 	return summary, nil
 }
+
+// removeAppx desinstala los paquetes AppX cuyo nombre coincide con un patrón FIJO (definido en el
+// código, nunca escrito por el usuario) y devuelve cuántos había.
+func removeAppx(pattern string) (int, error) {
+	if !appxPatternRe.MatchString(pattern) {
+		return 0, fmt.Errorf("patrón de paquete no permitido: %q", pattern)
+	}
+	out, err := runPS(fmt.Sprintf(`$p = @(Get-AppxPackage -AllUsers -Name '%s'); $p.Count; $p | Remove-AppxPackage -AllUsers -ErrorAction SilentlyContinue`, pattern))
+	if err != nil && strings.TrimSpace(out) == "" {
+		return 0, errors.New("no se pudo desinstalar (¿falta administrador?)")
+	}
+	first, _, _ := strings.Cut(strings.TrimSpace(out), "\n")
+	var n int
+	fmt.Sscanf(strings.TrimSpace(first), "%d", &n)
+	return n, nil
+}
+
+var appxPatternRe = regexp.MustCompile(`^[A-Za-z0-9.*]+$`)

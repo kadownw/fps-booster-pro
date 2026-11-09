@@ -78,7 +78,11 @@ func readState(c RegChange) (RegState, error) {
 		if err != nil {
 			return RegState{}, err
 		}
-		return RegState{Exists: true, Kind: "sz", S: v}, nil
+		kind := "sz"
+		if typ == registry.EXPAND_SZ {
+			kind = "esz" // se conserva el tipo al restaurar (las rutas con %SystemRoot% no se expandirían como REG_SZ)
+		}
+		return RegState{Exists: true, Kind: kind, S: v}, nil
 	case registry.BINARY:
 		v, _, err := k.GetBinaryValue(c.Name)
 		if err != nil {
@@ -116,6 +120,8 @@ func writeState(c RegChange, st RegState) error {
 	switch st.Kind {
 	case "dword":
 		return k.SetDWordValue(c.Name, st.D)
+	case "esz":
+		return k.SetExpandStringValue(c.Name, st.S)
 	case "bin":
 		b, err := hex.DecodeString(st.Hex)
 		if err != nil {
