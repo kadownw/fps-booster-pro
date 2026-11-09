@@ -512,7 +512,7 @@ function gameCard(g, playing) {
     : h('div', { class: 'cv-over' },
       h('div', { class: 'cv-t' }, g.game),
       h('div', { class: 'cv-k' }, 'Media de FPS en la sesión'), h('div', { class: 'cv-big' }, '–'),
-      h('div', { class: 'cv-sub' }, S.info && S.info.admin ? 'Esta sesión no tuvo datos de FPS (el juego usa Vulkan/OpenGL o duró muy poco).' : 'Abrí South Tweaks como administrador para medir los FPS.'));
+      h('div', { class: 'cv-sub' }, S.info && S.info.admin ? 'Esta sesión no tuvo datos de FPS (duró muy poco o el juego bloquea los eventos del sistema).' : 'Abrí South Tweaks como administrador para medir los FPS.'));
   return h('div', { class: 'cv' + (playing ? ' live' : '') }, cover, playing && h('span', { class: 'cv-live' }, 'Jugando'), h('div', { class: 'cv-name' }, g.game), over);
 }
 

@@ -2,6 +2,8 @@ package main
 
 import (
 	"os"
+	"os/exec"
+	"path/filepath"
 	"testing"
 	"time"
 	"unsafe"
@@ -91,4 +93,39 @@ func pidOf(name string) uint32 {
 		}
 	}
 	return 0
+}
+
+// OpenGL no pasa por DXGI: la medición tiene que salir del evento Present_Info de DxgKrnl.
+func TestETWCapturesOpenGL(t *testing.T) {
+	if os.Getenv("FBP_ADMIN_TESTS") != "1" || !isAdmin() {
+		t.Skip("define FBP_ADMIN_TESTS=1 y ejecuta como administrador")
+	}
+	exe := filepath.Join(t.TempDir(), "gltest.exe")
+	if out, err := exec.Command("go", "build", "-o", exe, "./tools/gltest").CombinedOutput(); err != nil {
+		t.Fatalf("no se pudo compilar gltest: %v\n%s", err, out)
+	}
+	cmd := exec.Command(exe, "9")
+	if err := cmd.Start(); err != nil {
+		t.Fatal(err)
+	}
+	defer cmd.Process.Kill()
+	time.Sleep(2 * time.Second) // la ventana tarda en abrir
+	c := &fpsCapture{}
+	old := fpsCap
+	fpsCap = c
+	defer func() { fpsCap = old }()
+	if err := c.Start(uint32(cmd.Process.Pid)); err != nil {
+		t.Fatal(err)
+	}
+	time.Sleep(4 * time.Second)
+	t.Logf("DxgKrnl EnableTraceEx2 = %d", c.krnlErr)
+	r := c.Stop()
+	t.Logf("OpenGL: fuente %s, %d cuadros, %.0f FPS, 1%% low %.0f, 0,1%% low %.0f", r.Source, r.Frames, r.Avg, r.Low1, r.Low01)
+	if r.Source != "DxgKrnl" || r.Frames < 100 {
+		t.Fatalf("no se midió el juego OpenGL: %+v", r)
+	}
+	// Un presenter OpenGL sin vsync da cientos de FPS; el promedio debe ser razonable.
+	if r.Avg < 20 {
+		t.Fatalf("FPS demasiado bajos: %.1f", r.Avg)
+	}
 }

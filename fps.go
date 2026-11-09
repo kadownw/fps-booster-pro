@@ -3,6 +3,7 @@ package main
 import (
 	"errors"
 	"math"
+	"runtime"
 	"sort"
 	"sync"
 	"sync/atomic"
@@ -11,11 +12,16 @@ import (
 	"golang.org/x/sys/windows"
 )
 
-// Medición de FPS sin programas externos: se abre una sesión ETW en tiempo real, se activa el
-// proveedor Microsoft-Windows-DXGI y se cuenta el evento «Present» (id 42) del proceso del juego.
-// Es la misma fuente que usan PresentMon y CapFrameX. Solo LEE eventos: no toca el juego.
-// Requiere administrador (o el grupo «Performance Log Users»). Cubre juegos DirectX 9Ex/10/11/12;
-// los que dibujan con Vulkan u OpenGL puro no emiten este evento y quedan sin FPS.
+// Medición de FPS sin programas externos: se abre una sesión ETW en tiempo real y se cuentan las
+// presentaciones de cuadros del proceso del juego. Es la misma fuente que usan PresentMon y CapFrameX.
+// Solo LEE eventos: no toca el juego. Requiere administrador (o el grupo «Performance Log Users»).
+//
+// Se usan dos fuentes:
+//   - Microsoft-Windows-DXGI, evento 42 (Present): DirectX 9Ex/10/11/12.
+//   - Microsoft-Windows-DxgKrnl, evento 184 (Present_Info): llega al kernel gráfico CUALQUIER
+//     presentación, también la de Vulkan y OpenGL. El evento se filtra por id dentro del kernel,
+//     así que el costo es de un evento por cuadro.
+// Si DXGI ve al menos la mitad de los cuadros que DxgKrnl se usa DXGI; si no (Vulkan/OpenGL), DxgKrnl.
 
 const (
 	etwSession       = "SouthTweaksFPS"
@@ -23,11 +29,13 @@ const (
 	etwEventRecord   = 0x10000000
 	wnodeTracedGUID  = 0x00020000
 	dxgiPresentStart = 42
+	krnlPresentInfo  = 184
 	capDeltas        = 4_000_000 // tope de cuadros guardados por sesión (~4,6 h a 240 FPS)
 )
 
 var (
-	guidDXGI = windows.GUID{Data1: 0xCA11C036, Data2: 0x0102, Data3: 0x4A2D, Data4: [8]byte{0xA6, 0xAD, 0xF0, 0x3C, 0xFE, 0xD5, 0xD3, 0xC9}}
+	guidDxgKrnl = windows.GUID{Data1: 0x802EC45A, Data2: 0x1E99, Data3: 0x4B83, Data4: [8]byte{0x99, 0x20, 0x87, 0xC9, 0x82, 0x77, 0xBA, 0x9D}}
+	guidDXGI    = windows.GUID{Data1: 0xCA11C036, Data2: 0x0102, Data3: 0x4A2D, Data4: [8]byte{0xA6, 0xAD, 0xF0, 0x3C, 0xFE, 0xD5, 0xD3, 0xC9}}
 
 	advapiETW       = windows.NewLazySystemDLL("advapi32.dll")
 	procStartTrace  = advapiETW.NewProc("StartTraceW")
@@ -97,13 +105,31 @@ type eventRecord struct {
 	ID         uint16
 }
 
-// fpsCapture acumula los intervalos entre «Present» de un proceso.
-type fpsCapture struct {
-	mu     sync.Mutex
+// series acumula los intervalos entre presentaciones de una fuente.
+type series struct {
 	last   int64
 	deltas []float32 // ms entre presentaciones consecutivas
 	sumMs  float64
+}
 
+func (s *series) add(ts int64) {
+	if s.last != 0 {
+		// El tiempo viene en unidades de 100 ns. Pausas de más de 1 s (carga, menú) no cuentan.
+		if dt := float64(ts-s.last) / 10000.0; dt > 0 && dt < 1000 && len(s.deltas) < capDeltas {
+			s.deltas = append(s.deltas, float32(dt))
+			s.sumMs += dt
+		}
+	}
+	s.last = ts
+}
+
+// fpsCapture acumula las presentaciones de un proceso por cada fuente.
+type fpsCapture struct {
+	mu   sync.Mutex
+	dxgi series
+	krnl series
+
+	krnlErr uintptr // 0 = DxgKrnl activo
 	pid     atomic.Uint32
 	session uint64
 	trace   uint64
@@ -113,25 +139,25 @@ type fpsCapture struct {
 
 var fpsCap = &fpsCapture{}
 var fpsCallback = windows.NewCallback(func(rec *eventRecord) uintptr {
-	if rec.ID == dxgiPresentStart {
-		fpsCap.onPresent(rec.ProcessID, rec.TimeStamp)
+	switch {
+	case rec.ID == dxgiPresentStart && rec.Provider == guidDXGI:
+		fpsCap.onPresent(rec.ProcessID, rec.TimeStamp, false)
+	case rec.ID == krnlPresentInfo && rec.Provider == guidDxgKrnl:
+		fpsCap.onPresent(rec.ProcessID, rec.TimeStamp, true)
 	}
 	return 0
 })
 
-func (c *fpsCapture) onPresent(pid uint32, ts int64) {
+func (c *fpsCapture) onPresent(pid uint32, ts int64, krnl bool) {
 	if pid == 0 || pid != c.pid.Load() {
 		return
 	}
 	c.mu.Lock()
-	if c.last != 0 {
-		// El tiempo viene en unidades de 100 ns. Pausas de más de 1 s (carga, menú) no cuentan.
-		if dt := float64(ts-c.last) / 10000.0; dt > 0 && dt < 1000 && len(c.deltas) < capDeltas {
-			c.deltas = append(c.deltas, float32(dt))
-			c.sumMs += dt
-		}
+	if krnl {
+		c.krnl.add(ts)
+	} else {
+		c.dxgi.add(ts)
 	}
-	c.last = ts
 	c.mu.Unlock()
 }
 
@@ -164,7 +190,7 @@ func (c *fpsCapture) Start(pid uint32) error {
 		return nil
 	}
 	c.mu.Lock()
-	c.last, c.deltas, c.sumMs = 0, c.deltas[:0], 0
+	c.dxgi, c.krnl = series{}, series{}
 	c.mu.Unlock()
 	c.pid.Store(pid)
 
@@ -180,11 +206,13 @@ func (c *fpsCapture) Start(pid uint32) error {
 	if r != 0 {
 		return windows.Errno(r)
 	}
-	// Nivel 4 (informativo), todas las palabras clave.
+	// DXGI: nivel 4 (informativo), todas las palabras clave.
 	if r, _, _ := procEnableTrace.Call(uintptr(c.session), uintptr(unsafe.Pointer(&guidDXGI)), 1, 4, ^uintptr(0), 0, 0, 0); r != 0 {
 		stopSessionByName()
 		return windows.Errno(r)
 	}
+	// DxgKrnl: solo el evento Present_Info, filtrado dentro del kernel. Si falla, queda solo DXGI.
+	c.krnlErr = enableKrnlFilter(c.session)
 	lf := &eventTraceLogfile{LoggerName: name, ProcessMode: etwRealTime | etwEventRecord, EventCB: fpsCallback}
 	h, _, _ := procOpenTrace.Call(uintptr(unsafe.Pointer(lf)))
 	if h == ^uintptr(0) || h == 0 {
@@ -210,15 +238,32 @@ type fpsResult struct {
 	Low1   float64 // 1% low
 	Low01  float64 // 0,1% low
 	Frames int
+	Source string // "DXGI" | "DxgKrnl"
 }
 
 // Snapshot calcula los FPS con lo capturado hasta ahora, sin detener la captura.
 func (c *fpsCapture) Snapshot() fpsResult {
 	c.mu.Lock()
-	d := append([]float32(nil), c.deltas...)
-	sum := c.sumMs
+	dx := append([]float32(nil), c.dxgi.deltas...)
+	dxSum := c.dxgi.sumMs
+	kr := append([]float32(nil), c.krnl.deltas...)
+	krSum := c.krnl.sumMs
 	c.mu.Unlock()
-	return computeFPS(d, sum)
+	d, sum, src := pickSeries(dx, dxSum, kr, krSum)
+	r := computeFPS(d, sum)
+	r.Source = src
+	return r
+}
+
+// pickSeries elige DXGI si ve al menos la mitad de los cuadros que DxgKrnl; si no, DxgKrnl.
+func pickSeries(dx []float32, dxSum float64, kr []float32, krSum float64) ([]float32, float64, string) {
+	if len(dx) >= 30 && len(dx)*2 >= len(kr) {
+		return dx, dxSum, "DXGI"
+	}
+	if len(kr) >= 30 {
+		return kr, krSum, "DxgKrnl"
+	}
+	return dx, dxSum, "DXGI"
 }
 
 // Stop cierra la sesión y devuelve el resultado.
@@ -256,4 +301,30 @@ func computeFPS(deltas []float32, sumMs float64) fpsResult {
 		return 1000 / (t / float64(k))
 	}
 	return fpsResult{Avg: float64(n) / sumMs * 1000, Low1: low(0.01), Low01: low(0.001), Frames: n}
+}
+
+// enableKrnlFilter activa DxgKrnl solo para el evento Present_Info (filtro por id en el kernel).
+func enableKrnlFilter(session uint64) uintptr {
+	// EVENT_FILTER_EVENT_ID: FilterIn (1 byte), Reserved (1), Count (2), Events[]
+	payload := []byte{1, 0, 1, 0, byte(krnlPresentInfo & 0xFF), byte(krnlPresentInfo >> 8)}
+	type filterDesc struct {
+		Ptr  uint64
+		Size uint32
+		Type uint32
+	}
+	type enableParams struct {
+		Version      uint32
+		EnableProp   uint32
+		ControlFlags uint32
+		SourceID     windows.GUID
+		Filter       *filterDesc
+		FilterCount  uint32
+	}
+	fd := filterDesc{Ptr: uint64(uintptr(unsafe.Pointer(&payload[0]))), Size: uint32(len(payload)), Type: 0x80000200}
+	p := enableParams{Version: 2, Filter: &fd, FilterCount: 1}
+	r, _, _ := procEnableTrace.Call(uintptr(session), uintptr(unsafe.Pointer(&guidDxgKrnl)), 1, 4, ^uintptr(0), 0, 0, uintptr(unsafe.Pointer(&p)))
+	runtime.KeepAlive(payload)
+	runtime.KeepAlive(&fd)
+	runtime.KeepAlive(&p)
+	return r
 }
