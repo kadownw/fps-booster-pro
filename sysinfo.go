@@ -3,6 +3,7 @@ package main
 import (
 	"fmt"
 	"os"
+	"regexp"
 	"runtime"
 	"strconv"
 	"strings"
@@ -133,8 +134,6 @@ func supported(t Tweak) bool {
 	switch {
 	case t.Once:
 		return true
-	case t.Power && t.PlanID == "":
-		return schemeExists(schemeHighPerf) // otras herramientas a veces borran los planes estándar
 	case t.Power:
 		return true
 	case len(t.Nvidia) > 0:
@@ -220,4 +219,32 @@ func liveUsage() Live {
 	prevIdle, prevK, prevU = i, k, u
 	total, avail, load := memory()
 	return Live{CPU: cpu, RAM: float64(load), RAMTotal: float64(total) / (1 << 30), RAMUsed: float64(total-avail) / (1 << 30)}
+}
+
+const netClassKeyPath = `SYSTEM\CurrentControlSet\Control\Class\{4d36e972-e325-11ce-bfc1-08002be10318}`
+
+var virtualNIC = regexp.MustCompile(`(?i)virtual|vmware|hyper-v|loopback|bluetooth|wan miniport|tap-|vpn|vethernet|tunnel|pseudo|npcap|wireguard|zerotier|tailscale`)
+
+// nicAdapters devuelve la subclave ("0000", "0001"...) de cada adaptador de red físico
+// (Ethernet y Wi-Fi), sin adaptadores virtuales, de VPN ni Bluetooth.
+func nicAdapters() []string {
+	k, err := registry.OpenKey(registry.LOCAL_MACHINE, netClassKeyPath, registry.ENUMERATE_SUB_KEYS)
+	if err != nil {
+		return nil
+	}
+	defer k.Close()
+	names, _ := k.ReadSubKeyNames(-1)
+	var out []string
+	for _, n := range names {
+		if _, err := strconv.Atoi(n); err != nil {
+			continue
+		}
+		sub := netClassKeyPath + `\` + n
+		desc := regString(registry.LOCAL_MACHINE, sub, "DriverDesc")
+		if desc == "" || regString(registry.LOCAL_MACHINE, sub, "NetCfgInstanceId") == "" || virtualNIC.MatchString(desc) {
+			continue
+		}
+		out = append(out, n)
+	}
+	return out
 }

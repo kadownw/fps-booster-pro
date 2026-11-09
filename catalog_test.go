@@ -32,7 +32,7 @@ func TestCatalogIsConsistent(t *testing.T) {
 					t.Errorf("%s: servicio %s mal definido (MustExist/Start)", tw.ID, c.Path)
 				}
 			}
-			if c.Kind != "dword" && c.Kind != "sz" {
+			if c.Kind != "dword" && c.Kind != "sz" && c.Kind != "bin" {
 				t.Errorf("%s: tipo desconocido %s", tw.ID, c.Kind)
 			}
 		}

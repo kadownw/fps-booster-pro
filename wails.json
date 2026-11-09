@@ -1,11 +1,18 @@
 {
   "$schema": "https://wails.io/schemas/config.v2.json",
-  "name": "fpsbooster",
-  "outputfilename": "fbp-go",
+  "name": "southtweaks",
+  "outputfilename": "South-Tweaks",
   "frontend:install": "npm install",
   "frontend:build": "npm run build",
   "frontend:dev:watcher": "npm run dev",
   "frontend:dev:serverUrl": "auto",
+  "info": {
+    "companyName": "South",
+    "productName": "South Tweaks",
+    "productVersion": "2.0.0",
+    "copyright": "South Tweaks",
+    "comments": "Ajustes reversibles de Windows para juegos"
+  },
   "author": {
     "name": "",
     "email": ""

@@ -600,7 +600,7 @@ function build() {
   el.main = h('main', {}, el.adminBanner, el.content);
   document.getElementById('app').replaceChildren(
     h('aside', {},
-      h('div', { class: 'brand' }, h('div', { class: 'logo' }, 'FPS'), h('div', {}, h('b', {}, 'FPS Booster Pro'), h('small', {}, 'v2 · Go'))),
+      h('div', { class: 'brand' }, h('div', { class: 'logo' }, 'ST'), h('div', {}, h('b', {}, 'South Tweaks'), h('small', {}, 'v2 · Go'))),
       el.nav,
       h('div', { class: 'user' }, h('div', { class: 'avatar' }, (S.info.user || '?').slice(0, 1).toUpperCase()),
         h('div', {}, h('b', {}, S.info.user || 'Usuario'), h('small', {}, S.info.admin ? 'Administrador' : 'Sin permisos de admin')))),

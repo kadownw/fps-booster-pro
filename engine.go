@@ -42,8 +42,8 @@ func (bk *Backup) ensure(t Tweak) (bool, error) {
 			return false, err
 		}
 		bk.PrevPower, changed = g, true
-		if t.PlanID == "fps" && !schemeExists(fpsPlanGUID) {
-			bk.DeletePlan = fpsPlanGUID // lo crea la app: al revertir se borra
+		if t.PlanID == "south" && !schemeExists(southPlanGUID) {
+			bk.DeletePlan = southPlanGUID // lo crea la app: al revertir se borra
 		}
 	}
 	if len(t.Nvidia) > 0 && bk.Nvidia == nil {
@@ -106,7 +106,12 @@ func NewEngine() (*Engine, error) {
 	if err != nil {
 		return nil, err
 	}
-	dir := filepath.Join(base, "FPSBoosterPro")
+	dir := filepath.Join(base, "SouthTweaks")
+	if _, err := os.Stat(dir); os.IsNotExist(err) { // nombre anterior de la app: se migran backups y registros
+		if old := filepath.Join(base, "FPSBoosterPro"); dirExists(old) {
+			_ = os.Rename(old, dir)
+		}
+	}
 	if err := os.MkdirAll(dir, 0o700); err != nil {
 		return nil, err
 	}
@@ -183,7 +188,7 @@ func (e *Engine) isActive(t Tweak) bool {
 	regs := expand(t)
 	for _, c := range regs {
 		st, err := readState(c)
-		if err != nil || !sameState(st, desired(c)) {
+		if err != nil || !satisfied(c, st) {
 			return false
 		}
 	}
@@ -291,8 +296,8 @@ func (e *Engine) Apply(id string) (err error) {
 func (e *Engine) doApply(t Tweak) error {
 	if t.Power {
 		target := planTarget(t)
-		if t.PlanID == "fps" {
-			if _, err := ensureFPSPlan(); err != nil {
+		if t.PlanID == "south" {
+			if _, err := ensureSouthPlan(); err != nil {
 				return err
 			}
 		}
@@ -318,11 +323,16 @@ func (e *Engine) doApply(t Tweak) error {
 		return nil
 	}
 	for _, c := range expand(t) {
-		if err := writeState(c, desired(c)); err != nil {
+		want := desired(c)
+		if c.KV != "" { // lista clave=valor;: se conserva el resto de las claves
+			cur, _ := readState(c)
+			want = RegState{Exists: true, Kind: "sz", S: mergeKV(cur.S, c.KV)}
+		}
+		if err := writeState(c, want); err != nil {
 			return fmt.Errorf("%s\\%s\\%s: %w", c.Root, c.Path, c.Name, err)
 		}
 		st, err := readState(c)
-		if err != nil || !sameState(st, desired(c)) {
+		if err != nil || !sameState(st, want) {
 			return fmt.Errorf("verificación fallida en %s\\%s\\%s", c.Root, c.Path, c.Name)
 		}
 	}
@@ -429,4 +439,9 @@ func (e *Engine) RevertAll() error {
 		}
 	}
 	return errors.Join(errs...)
+}
+
+func dirExists(p string) bool {
+	fi, err := os.Stat(p)
+	return err == nil && fi.IsDir()
 }

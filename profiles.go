@@ -20,8 +20,8 @@ type Profile struct {
 var profileDefs = []Profile{
 	{
 		ID: "gaming", Title: "Gaming",
-		Description: "Plan de energía de rendimiento estable, perfil NVIDIA de baja latencia, Modo Juego, sin grabación en segundo plano, mouse y teclado, GPU y red.",
-		Tweaks: []string{"fps_power_plan", "nvidia_profile", "game_mode", "game_dvr", "fullscreen_opt", "mouse_accel", "kbd_latency", "sticky_keys",
+		Description: "South's Core power plan, perfil NVIDIA de baja latencia, Modo Juego, sin grabación en segundo plano, mouse y teclado, GPU y red.",
+		Tweaks: []string{"south_power_plan", "nvidia_profile", "windowed_flip", "raw_mouse_throttle", "mouse_raw_curve", "nic_power_off", "game_mode", "game_dvr", "fullscreen_opt", "mouse_accel", "kbd_latency", "sticky_keys",
 			"bg_apps", "hags", "net_throttle", "games_priority", "mmcss_extra", "foreground_boost", "power_throttle", "nv_pstate", "amd_ulps",
 			"usb_recovery", "delivery_opt", "update_pause"},
 	},
@@ -109,7 +109,7 @@ func CreateRestorePoint() error {
 	if !isAdmin() {
 		return errNeedAdmin
 	}
-	out, err := runPS(`Checkpoint-Computer -Description 'FPS Booster Pro' -RestorePointType MODIFY_SETTINGS -ErrorAction Stop`)
+	out, err := runPS(`Checkpoint-Computer -Description 'South Tweaks' -RestorePointType MODIFY_SETTINGS -ErrorAction Stop`)
 	if err != nil {
 		msg := strings.TrimSpace(out)
 		if msg == "" {

@@ -16,7 +16,7 @@ func main() {
 	app := NewApp()
 
 	err := wails.Run(&options.App{
-		Title:     "FPS Booster Pro",
+		Title:     "South Tweaks",
 		Width:     1180,
 		Height:    780,
 		MinWidth:  900,

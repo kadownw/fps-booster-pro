@@ -329,6 +329,10 @@ export namespace main {
 	    s?: string;
 	    mustExist?: boolean;
 	    ramKB?: boolean;
+	    hex?: string;
+	    kv?: string;
+	    ifExists?: boolean;
+	    date?: string;
 	
 	    static createFrom(source: any = {}) {
 	        return new RegChange(source);
@@ -344,6 +348,10 @@ export namespace main {
 	        this.s = source["s"];
 	        this.mustExist = source["mustExist"];
 	        this.ramKB = source["ramKB"];
+	        this.hex = source["hex"];
+	        this.kv = source["kv"];
+	        this.ifExists = source["ifExists"];
+	        this.date = source["date"];
 	    }
 	}
 	export class TweakView {

@@ -1,6 +1,9 @@
 package main
 
-import "strings"
+import (
+	"strings"
+	"time"
+)
 
 // Catálogo de tweaks. Todos son reversibles: el motor guarda el valor original
 // antes de tocar nada y lo restaura al revertir. Ninguno promete FPS.
@@ -21,6 +24,14 @@ type RegChange struct {
 	MustExist bool `json:"mustExist,omitempty"`
 	// RAMKB: el valor es la RAM total en KB (se calcula al aplicar).
 	RAMKB bool `json:"ramKB,omitempty"`
+	// Hex: valor binario (REG_BINARY) en hexadecimal; con Kind "bin".
+	Hex string `json:"hex,omitempty"`
+	// KV: el valor es una lista "clave=valor;" y solo se agrega/reemplaza esta clave (se conservan las demás).
+	KV string `json:"kv,omitempty"`
+	// IfExists: se omite si el valor no existe en este equipo (drivers que no lo soportan).
+	IfExists bool `json:"ifExists,omitempty"`
+	// Date: valor de fecha dinámico en UTC: "now" o "+35d" (se calcula al aplicar).
+	Date string `json:"date,omitempty"`
 }
 
 type Tweak struct {
@@ -37,7 +48,7 @@ type Tweak struct {
 	MaxBuild    int         `json:"maxBuild,omitempty"` // build máxima de Windows (0 = sin límite)
 	Tasks       []string    `json:"tasks,omitempty"`    // tareas programadas que se deshabilitan
 	Changes     []RegChange `json:"changes"`
-	// PlanID: con Power=true, "" = Alto rendimiento de Windows; "fps" = plan propio de FPS Booster Pro.
+	// PlanID: con Power=true, "south" = plan propio "South's Core power plan".
 	PlanID string `json:"planId,omitempty"`
 	// Nvidia: ajustes del perfil global del driver NVIDIA (NvAPI DRS).
 	Nvidia []NvSetting `json:"nvidia,omitempty"`
@@ -54,14 +65,27 @@ type CmdSpec struct {
 	State  RegChange // valor que refleja el estado; Kind/D = estado deseado
 }
 
-const gpuPlaceholder = "{GPU}"
+const (
+	gpuPlaceholder = "{GPU}"
+	nicPlaceholder = "{NIC}" // cada adaptador de red físico (clase Net)
+)
 
 // expand reemplaza {GPU} por la clave de cada adaptador del fabricante, calcula valores
 // dinámicos y omite los cambios marcados MustExist cuya clave no existe en este equipo.
 func expand(t Tweak) []RegChange {
 	var base []RegChange
 	if t.Vendor == "" {
-		base = t.Changes
+		for _, c := range t.Changes {
+			if strings.Contains(c.Path, nicPlaceholder) { // un cambio por adaptador de red físico
+				for _, sub := range nicAdapters() {
+					cc := c
+					cc.Path = strings.Replace(c.Path, nicPlaceholder, sub, 1)
+					base = append(base, cc)
+				}
+				continue
+			}
+			base = append(base, c)
+		}
 	} else {
 		for _, a := range gpuAdapters() {
 			if a.Vendor != t.Vendor {
@@ -74,9 +98,18 @@ func expand(t Tweak) []RegChange {
 		}
 	}
 	var out []RegChange
+	now := time.Now()
 	for _, c := range base {
 		if c.MustExist && !keyExists(c) {
 			continue
+		}
+		if c.IfExists {
+			if st, err := readState(c); err != nil || !st.Exists {
+				continue
+			}
+		}
+		if c.Date != "" {
+			c.S = dateFor(c.Date, now)
 		}
 		if c.RAMKB {
 			total, _, _ := memory()
@@ -114,17 +147,19 @@ const (
 // Los ajustes de Windows del catálogo coinciden con prácticas conocidas (guías de latencia,
 // documentación de MMCSS); los valores se reimplementaron de forma independiente.
 var moderate = map[string]bool{"hags": true, "games_priority": true, "foreground_boost": true,
-	"net_throttle": true, "bg_apps": true, "nv_pstate": true, "mmcss_extra": true, "power_plan": true,
+	"net_throttle": true, "bg_apps": true, "nv_pstate": true, "mmcss_extra": true,
 	"power_throttle": true, "sticky_keys": true, "telemetry": true, "error_reporting": true,
 	"copilot": true, "ai_recall": true, "svc_unneeded": true, "svc_background_manual": true,
 	"svc_xbox_manual": true, "svc_search_manual": true, "svc_print_manual": true, "svc_telemetry": true,
 	"svc_error_reporting": true, "autologgers": true, "fast_startup": true, "svchost_split": true,
-	"location_off": true, "cortana": true, "fps_power_plan": true, "nvidia_profile": true, "hibernate_off": true}
+	"location_off": true, "cortana": true, "south_power_plan": true, "nvidia_profile": true, "hibernate_off": true,
+	"mpo_off": true, "flip_immediate": true, "nic_power_off": true, "bg_apps_policy": true, "updates_pause": true}
 
 func catalog() []Tweak {
 	list := append(rawCatalog(), extraCatalog()...)
 	list = append(list, servicesCatalog()...)
 	list = append(list, paragonCatalog()...)
+	list = append(list, ultimateCatalog()...)
 	for i := range list {
 		list[i].Risk = "safe"
 		if moderate[list[i].ID] {
@@ -141,10 +176,6 @@ const (
 
 func rawCatalog() []Tweak {
 	return []Tweak{
-		{
-			ID: "power_plan", Title: "Plan de energía: Alto rendimiento", Category: "Energía", Power: true,
-			Description: "Activa el plan de Alto rendimiento para que el procesador no baje la frecuencia de más. En notebooks aumenta consumo y temperatura.",
-		},
 		{
 			ID: "game_mode", Title: "Modo Juego de Windows", Category: "Juegos",
 			Description: "Windows prioriza el juego en primer plano y evita instalar actualizaciones o mostrar notificaciones mientras jugás.",

@@ -2,25 +2,71 @@ package main
 
 import (
 	"os"
+	"strings"
 	"testing"
 )
 
-func TestFPSPlanDefinition(t *testing.T) {
-	seen := map[string]bool{}
-	for _, v := range fpsPlanValues() {
-		if !validGUID(v.Sub) || !validGUID(v.Setting) {
-			t.Errorf("GUID inválido en %s", v.Name)
-		}
-		if seen[v.Setting] {
-			t.Errorf("ajuste repetido: %s", v.Name)
-		}
-		seen[v.Setting] = true
+func TestSouthPlanTable(t *testing.T) {
+	if len(southPlanTable) < 100 {
+		t.Fatalf("la tabla del plan es demasiado corta: %d", len(southPlanTable))
 	}
-	if !validGUID(fpsPlanGUID) {
+	seen := map[string]bool{}
+	for _, s := range southPlanTable {
+		if !validGUID(s.Sub) || !validGUID(s.Setting) {
+			t.Errorf("GUID inválido en %q", s.Name)
+		}
+		if seen[s.Sub+s.Setting] {
+			t.Errorf("ajuste repetido: %s", s.Name)
+		}
+		seen[s.Sub+s.Setting] = true
+	}
+	if !validGUID(southPlanGUID) {
 		t.Fatal("GUID del plan inválido")
+	}
+	if southPlanName != "South's Core power plan" {
+		t.Fatalf("nombre del plan: %q", southPlanName)
+	}
+	// el procesador debe quedar siempre disponible con corriente
+	found := false
+	for _, s := range southPlanTable {
+		if s.Name == "Minimum processor state" && s.AC == 100 {
+			found = true
+		}
+	}
+	if !found {
+		t.Error("el plan no fija el estado mínimo del procesador al 100 % con corriente")
 	}
 	if err := runAllowedPowercfg([]string{"/delete", "x"}); err == nil {
 		t.Fatal("aceptó un comando de powercfg fuera de la lista blanca")
+	}
+}
+
+func TestSouthPlanFilters(t *testing.T) {
+	all := southSettings(false)
+	for _, s := range all {
+		if s.Group == "Battery" || s.Group == "Power buttons and lid" {
+			t.Errorf("no debería tocar el grupo %q (%s)", s.Group, s.Name)
+		}
+	}
+	noPark := southSettings(true)
+	for _, s := range noPark {
+		if strings.Contains(strings.ToLower(s.Name), "core parking") {
+			t.Errorf("en CPUs híbridas/X3D no debe tocar estacionamiento: %s", s.Name)
+		}
+	}
+	if len(noPark) >= len(all) {
+		t.Error("el filtro de estacionamiento no quitó nada")
+	}
+	// con batería solo se aplica hardware
+	for _, s := range all {
+		if dcGroups[s.Group] && s.Group == "Sleep" {
+			t.Error("Sleep no debe aplicarse con batería")
+		}
+	}
+	for _, g := range []string{"Sleep", "Display"} {
+		if dcGroups[g] {
+			t.Errorf("%s no debe estar entre los grupos con valor de batería", g)
+		}
 	}
 }
 
@@ -40,7 +86,7 @@ func TestReadACValueParsesAnyLanguage(t *testing.T) {
 }
 
 // Crea el plan, lo activa, verifica valores, revierte y comprueba que se borró y volvió el anterior.
-func TestFPSPlanRoundTrip(t *testing.T) {
+func TestSouthPlanRoundTrip(t *testing.T) {
 	if os.Getenv("FBP_ADMIN_TESTS") != "1" || !isAdmin() {
 		t.Skip("define FBP_ADMIN_TESTS=1 y ejecuta como administrador")
 	}
@@ -52,33 +98,36 @@ func TestFPSPlanRoundTrip(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := e.Apply("fps_power_plan"); err != nil {
+	if err := e.Apply("south_power_plan"); err != nil {
 		t.Fatal(err)
 	}
-	if g, _ := activeScheme(); g != fpsPlanGUID {
+	if g, _ := activeScheme(); g != southPlanGUID {
 		t.Fatalf("plan activo %s", g)
 	}
-	checked := 0
-	for _, v := range fpsPlanValues() {
-		got, ok := readACValue(fpsPlanGUID, v.Sub, v.Setting)
+	checked, mismatched := 0, 0
+	for _, v := range southSettings(cpuNeedsParking()) {
+		got, ok := readACValue(southPlanGUID, v.Sub, v.Setting)
 		if !ok {
-			t.Logf("no existe en este equipo: %s", v.Name)
-			continue
+			continue // el ajuste no existe en este equipo
 		}
 		checked++
 		if got != v.AC {
+			mismatched++
 			t.Errorf("%s = %d, esperado %d", v.Name, got, v.AC)
 		}
 	}
-	t.Logf("%d ajustes verificados", checked)
-	if err := e.Revert("fps_power_plan"); err != nil {
+	t.Logf("%d ajustes verificados, %d distintos", checked, mismatched)
+	if checked < 60 {
+		t.Errorf("se verificaron muy pocos ajustes: %d", checked)
+	}
+	if err := e.Revert("south_power_plan"); err != nil {
 		t.Fatal(err)
 	}
 	if g, _ := activeScheme(); g != prev {
 		t.Fatalf("no volvió al plan anterior: %s vs %s", g, prev)
 	}
 	invalidateSchemes()
-	if schemeExists(fpsPlanGUID) {
+	if schemeExists(southPlanGUID) {
 		t.Fatal("el plan creado no se borró al revertir")
 	}
 }

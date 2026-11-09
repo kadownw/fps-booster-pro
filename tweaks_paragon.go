@@ -15,12 +15,9 @@ const (
 func paragonCatalog() []Tweak {
 	return []Tweak{
 		{
-			ID: "fps_power_plan", Title: "Plan de energía FPS Booster: rendimiento estable", Category: "Energía", Power: true, PlanID: "fps",
-			Description: "Crea un plan propio: la CPU sube de frecuencia al instante y baja de a poco (menos oscilación entre frames), boost agresivo, " +
-				"USB, PCIe y Wi-Fi sin ahorro de energía y ventiladores antes que bajar frecuencia. Conserva los estados de reposo del procesador " +
-				"para no calentar en vano. En CPUs híbridas y Ryzen X3D de dos CCD respeta el estacionamiento de núcleos. Al revertir vuelve tu plan anterior y se borra.",
-		},
-		{
+			ID: "south_power_plan", Title: "South's Core power plan", Category: "Energía", Power: true, PlanID: "south",
+			Description: "Plan de energía de alto rendimiento para juegos: procesador siempre disponible con corriente, boost agresivo, núcleos sin estacionar (salvo CPUs híbridas y Ryzen X3D de dos CCD), y sin ahorro en discos, USB, PCIe ni Wi-Fi. Con batería conserva el ahorro. Al revertir vuelve tu plan anterior y este se borra.",
+		}, {
 			ID: "nvidia_profile", Title: "Perfil NVIDIA: máximo rendimiento y baja latencia", Category: "GPU", Admin: true,
 			Description: "Ajusta el perfil global del driver con la API oficial de NVIDIA: modo de energía «Preferir rendimiento máximo» (relojes estables), " +
 				"modo de baja latencia activado (1 frame en cola) y caché de shaders activada. Sube el consumo en reposo. Se guarda y restaura cada valor previo.",
