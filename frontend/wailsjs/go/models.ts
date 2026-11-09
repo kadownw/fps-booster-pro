@@ -6,6 +6,7 @@ export namespace main {
 	    l2KB: number;
 	    l3KB: number;
 	    baseMHz: number;
+	    hybrid: boolean;
 	
 	    static createFrom(source: any = {}) {
 	        return new CPUDetail(source);
@@ -18,6 +19,7 @@ export namespace main {
 	        this.l2KB = source["l2KB"];
 	        this.l3KB = source["l3KB"];
 	        this.baseMHz = source["baseMHz"];
+	        this.hybrid = source["hybrid"];
 	    }
 	}
 	export class CleanItem {
@@ -288,6 +290,22 @@ export namespace main {
 		    return a;
 		}
 	}
+	export class NvSetting {
+	    id: number;
+	    value: number;
+	    name: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new NvSetting(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.id = source["id"];
+	        this.value = source["value"];
+	        this.name = source["name"];
+	    }
+	}
 	export class RegChange {
 	    root: string;
 	    path: string;
@@ -328,6 +346,8 @@ export namespace main {
 	    maxBuild?: number;
 	    tasks?: string[];
 	    changes: RegChange[];
+	    planId?: string;
+	    nvidia?: NvSetting[];
 	    active: boolean;
 	    canUndo: boolean;
 	    blocked: boolean;
@@ -352,6 +372,8 @@ export namespace main {
 	        this.maxBuild = source["maxBuild"];
 	        this.tasks = source["tasks"];
 	        this.changes = this.convertValues(source["changes"], RegChange);
+	        this.planId = source["planId"];
+	        this.nvidia = this.convertValues(source["nvidia"], NvSetting);
 	        this.active = source["active"];
 	        this.canUndo = source["canUndo"];
 	        this.blocked = source["blocked"];

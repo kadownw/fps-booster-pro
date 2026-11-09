@@ -242,11 +242,12 @@ func enrichLive(l *Live) {
 var procGLPIEx = kernel32.NewProc("GetLogicalProcessorInformationEx")
 
 type CPUDetail struct {
-	Cores   int `json:"cores"`   // núcleos físicos
-	Threads int `json:"threads"` // procesadores lógicos
-	L2KB    int `json:"l2KB"`
-	L3KB    int `json:"l3KB"`
-	BaseMHz int `json:"baseMHz"`
+	Cores   int  `json:"cores"`   // núcleos físicos
+	Threads int  `json:"threads"` // procesadores lógicos
+	L2KB    int  `json:"l2KB"`
+	L3KB    int  `json:"l3KB"`
+	BaseMHz int  `json:"baseMHz"`
+	Hybrid  bool `json:"hybrid"` // núcleos de distinta clase de eficiencia (P/E)
 }
 
 func cpuDetail() CPUDetail {
@@ -271,6 +272,9 @@ func cpuDetail() CPUDetail {
 		switch rel {
 		case 0: // RelationProcessorCore
 			d.Cores++
+			if buf[off+9] > 0 { // PROCESSOR_RELATIONSHIP.EfficiencyClass
+				d.Hybrid = true
+			}
 		case 2: // RelationCache
 			level := buf[off+8]
 			cacheSize := *(*uint32)(unsafe.Pointer(&buf[off+12]))

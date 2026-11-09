@@ -37,6 +37,19 @@ type Tweak struct {
 	MaxBuild    int         `json:"maxBuild,omitempty"` // build máxima de Windows (0 = sin límite)
 	Tasks       []string    `json:"tasks,omitempty"`    // tareas programadas que se deshabilitan
 	Changes     []RegChange `json:"changes"`
+	// PlanID: con Power=true, "" = Alto rendimiento de Windows; "fps" = plan propio de FPS Booster Pro.
+	PlanID string `json:"planId,omitempty"`
+	// Nvidia: ajustes del perfil global del driver NVIDIA (NvAPI DRS).
+	Nvidia []NvSetting `json:"nvidia,omitempty"`
+	// Cmd: ajustes que Windows solo permite cambiar con un comando (p. ej. hibernación).
+	Cmd *CmdSpec `json:"-"`
+}
+
+// CmdSpec: comando permitido (solo powercfg) con su estado observable en el registro.
+type CmdSpec struct {
+	Apply  []string  // argumentos de powercfg para aplicar
+	Revert []string  // argumentos de powercfg para volver al estado original
+	State  RegChange // valor que refleja el estado; Kind/D = estado deseado
 }
 
 const gpuPlaceholder = "{GPU}"
@@ -104,11 +117,12 @@ var moderate = map[string]bool{"hags": true, "games_priority": true, "foreground
 	"copilot": true, "ai_recall": true, "svc_unneeded": true, "svc_background_manual": true,
 	"svc_xbox_manual": true, "svc_search_manual": true, "svc_print_manual": true, "svc_telemetry": true,
 	"svc_error_reporting": true, "autologgers": true, "fast_startup": true, "svchost_split": true,
-	"location_off": true, "cortana": true}
+	"location_off": true, "cortana": true, "fps_power_plan": true, "nvidia_profile": true, "hibernate_off": true}
 
 func catalog() []Tweak {
 	list := append(rawCatalog(), extraCatalog()...)
 	list = append(list, servicesCatalog()...)
+	list = append(list, paragonCatalog()...)
 	for i := range list {
 		list[i].Risk = "safe"
 		if moderate[list[i].ID] {

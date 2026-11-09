@@ -130,7 +130,17 @@ func supported(t Tweak) bool {
 	if (t.MinBuild > 0 && b < t.MinBuild) || (t.MaxBuild > 0 && b > t.MaxBuild) {
 		return false
 	}
-	return t.Power || len(expand(t)) > 0 || len(existingTasks(t)) > 0
+	switch {
+	case t.Power && t.PlanID == "":
+		return schemeExists(schemeHighPerf) // otras herramientas a veces borran los planes estándar
+	case t.Power:
+		return true
+	case len(t.Nvidia) > 0:
+		return nvAvailable()
+	case t.Cmd != nil:
+		return true
+	}
+	return len(expand(t)) > 0 || len(existingTasks(t)) > 0
 }
 
 func windowsName() string {

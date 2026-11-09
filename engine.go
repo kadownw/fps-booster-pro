@@ -22,7 +22,14 @@ type Backup struct {
 	PrevPower string       `json:"prevPower,omitempty"`
 	// Tasks: estado original de cada tarea programada ("Ready", "Disabled"...).
 	Tasks map[string]string `json:"tasks,omitempty"`
-	At    string            `json:"at"`
+	// DeletePlan: plan de energía creado por la app, que se borra al revertir.
+	DeletePlan string `json:"deletePlan,omitempty"`
+	// Nvidia: valores previos del perfil global del driver NVIDIA.
+	Nvidia []NvOrig `json:"nvidia,omitempty"`
+	// Cmd: estado previo y argumentos para volver (solo powercfg).
+	CmdOrig   *RegState `json:"cmdOrig,omitempty"`
+	CmdRevert []string  `json:"cmdRevert,omitempty"`
+	At        string    `json:"at"`
 }
 
 // ensure agrega al backup lo que todavía no tiene (original de cada valor y tarea del ajuste).
@@ -35,6 +42,23 @@ func (bk *Backup) ensure(t Tweak) (bool, error) {
 			return false, err
 		}
 		bk.PrevPower, changed = g, true
+		if t.PlanID == "fps" && !schemeExists(fpsPlanGUID) {
+			bk.DeletePlan = fpsPlanGUID // lo crea la app: al revertir se borra
+		}
+	}
+	if len(t.Nvidia) > 0 && bk.Nvidia == nil {
+		orig, err := nvReadOriginals(t.Nvidia)
+		if err != nil {
+			return false, err
+		}
+		bk.Nvidia, changed = orig, true
+	}
+	if t.Cmd != nil && bk.CmdOrig == nil {
+		st, err := readState(t.Cmd.State)
+		if err != nil {
+			return false, err
+		}
+		bk.CmdOrig, bk.CmdRevert, changed = &st, t.Cmd.Revert, true
 	}
 	known := map[string]bool{}
 	for _, it := range bk.Items {
@@ -143,7 +167,14 @@ func (e *Engine) isActive(t Tweak) bool {
 	}
 	if t.Power {
 		g, err := activeScheme()
-		return err == nil && g == schemeHighPerf
+		return err == nil && g == planTarget(t)
+	}
+	if len(t.Nvidia) > 0 {
+		return nvIsActive(t.Nvidia)
+	}
+	if t.Cmd != nil {
+		st, err := readState(t.Cmd.State)
+		return err == nil && sameState(st, desired(t.Cmd.State))
 	}
 	regs := expand(t)
 	for _, c := range regs {
@@ -206,6 +237,19 @@ func (e *Engine) Apply(id string) (err error) {
 	if !supported(t) {
 		return errors.New("este ajuste no aplica a tu equipo")
 	}
+	// Los planes de energía se excluyen entre sí: antes de activar uno se revierte el otro, así
+	// cada backup guarda el plan original del usuario.
+	if t.Power {
+		for _, o := range catalog() {
+			if o.Power && o.ID != id {
+				if _, applied := e.st.Items[o.ID]; applied {
+					if err := e.revertLocked(o.ID); err != nil {
+						return fmt.Errorf("no se pudo revertir %q antes de cambiar de plan: %w", o.Title, err)
+					}
+				}
+			}
+		}
+	}
 	bk, had := e.st.Items[id]
 	if !had {
 		bk = &Backup{At: time.Now().Format(time.RFC3339)}
@@ -237,12 +281,30 @@ func (e *Engine) Apply(id string) (err error) {
 
 func (e *Engine) doApply(t Tweak) error {
 	if t.Power {
-		if err := setScheme(schemeHighPerf); err != nil {
+		target := planTarget(t)
+		if t.PlanID == "fps" {
+			if _, err := ensureFPSPlan(); err != nil {
+				return err
+			}
+		}
+		if err := setScheme(target); err != nil {
 			return err
 		}
 		g, err := activeScheme()
-		if err != nil || g != schemeHighPerf {
+		if err != nil || g != target {
 			return errors.New("no se pudo verificar el plan de energía")
+		}
+		return nil
+	}
+	if len(t.Nvidia) > 0 {
+		return nvApply(t.Nvidia)
+	}
+	if t.Cmd != nil {
+		if err := runAllowedPowercfg(t.Cmd.Apply); err != nil {
+			return err
+		}
+		if st, err := readState(t.Cmd.State); err != nil || !sameState(st, desired(t.Cmd.State)) {
+			return errors.New("no se pudo verificar el cambio")
 		}
 		return nil
 	}
@@ -274,6 +336,24 @@ func (e *Engine) restore(bk *Backup) error {
 	if bk.PrevPower != "" {
 		if err := setScheme(bk.PrevPower); err != nil {
 			errs = append(errs, err)
+		} else if bk.DeletePlan != "" && bk.DeletePlan != bk.PrevPower && schemeExists(bk.DeletePlan) {
+			if err := deleteScheme(bk.DeletePlan); err != nil {
+				errs = append(errs, err)
+			}
+		}
+	}
+	if bk.Nvidia != nil {
+		if err := nvRestore(bk.Nvidia); err != nil {
+			errs = append(errs, err)
+		}
+	}
+	if bk.CmdOrig != nil && len(bk.CmdRevert) > 0 {
+		// Solo se ejecuta el comando de vuelta si el estado original era distinto del aplicado
+		// (p. ej., la hibernación estaba activada antes).
+		if bk.CmdOrig.Exists && bk.CmdOrig.D != 0 {
+			if err := runAllowedPowercfg(bk.CmdRevert); err != nil {
+				errs = append(errs, err)
+			}
 		}
 	}
 	for _, it := range bk.Items {
