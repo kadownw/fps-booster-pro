@@ -32,9 +32,9 @@ func ultimateCatalog() []Tweak {
 	return []Tweak{
 		{
 			ID: "windowed_flip", Title: "Optimizaciones para juegos en ventana (flip)", Category: "Juegos", MinBuild: buildWin11,
-			Description: "Los juegos DX10/DX11 en ventana o sin bordes usan el modo de presentación moderno (flip): menos latencia y permite VRR. " +
+			Description: "Los juegos DX10/DX11 en ventana o sin bordes usan el modo de presentación moderno (flip): menos latencia, y activa también las optimizaciones de frecuencia variable (VRR) si tu monitor y driver las soportan. " +
 				"Es la opción oficial de Windows 11 («Optimizaciones para juegos en ventana»). Algunos juegos pueden mostrar tearing: usá V-Sync o limitá los FPS. Conserva el resto de tus ajustes de gráficos.",
-			Changes: []RegChange{{Root: "HKCU", Path: `Software\Microsoft\DirectX\UserGpuPreferences`, Name: "DirectXUserGlobalSettings", Kind: "sz", KV: "SwapEffectUpgradeEnable=1"}},
+			Changes: []RegChange{{Root: "HKCU", Path: `Software\Microsoft\DirectX\UserGpuPreferences`, Name: "DirectXUserGlobalSettings", Kind: "sz", KV: "SwapEffectUpgradeEnable=1;VRROptimizeEnable=1"}},
 		},
 		{
 			ID: "raw_mouse_throttle", Title: "Mouse sin límite de sondeo en segundo plano", Category: "Entrada",

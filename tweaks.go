@@ -32,6 +32,11 @@ type RegChange struct {
 	IfExists bool `json:"ifExists,omitempty"`
 	// Date: valor de fecha dinámico en UTC: "now" o "+35d" (se calcula al aplicar).
 	Date string `json:"date,omitempty"`
+	// Delete: el valor debe NO existir (se borra; el backup guarda el original para poder devolverlo).
+	Delete bool `json:"delete,omitempty"`
+	// IfCurrent: el cambio solo se hace si el valor DWORD actual es exactamente este (p. ej. servicios
+	// deshabilitados que un arreglo vuelve a poner en manual; no toca los que ya están bien).
+	IfCurrent *uint32 `json:"ifCurrent,omitempty"`
 }
 
 type Tweak struct {
@@ -58,6 +63,9 @@ type Tweak struct {
 	PS *PSSpec `json:"-"`
 	// Once: acción que se ejecuta una vez y no deja nada que revertir (botón «Aplicar», sin interruptor).
 	Once bool `json:"once,omitempty"`
+	// Fix: arreglo de un problema de Windows (pestaña Fixes); no aparece en Optimizar. Icon: icono de su tarjeta.
+	Fix  bool   `json:"fix,omitempty"`
+	Icon string `json:"icon,omitempty"`
 }
 
 // PSSpec: estado = salida de State (texto); Want = valor que busca el ajuste; Apply/Revert = comandos fijos.
@@ -125,6 +133,11 @@ func expand(t Tweak) []RegChange {
 				continue
 			}
 		}
+		if c.IfCurrent != nil {
+			if st, err := readState(c); err != nil || !st.Exists || st.Kind != "dword" || st.D != *c.IfCurrent {
+				continue
+			}
+		}
 		if c.Date != "" {
 			c.S = dateFor(c.Date, now)
 		}
@@ -169,7 +182,9 @@ var moderate = map[string]bool{"hags": true, "games_priority": true, "foreground
 	"copilot": true, "ai_recall": true, "svc_xbox_manual": true, "fast_startup": true, "svchost_split": true,
 	"location_off": true, "cortana": true, "south_power_plan": true, "nvidia_profile": true, "hibernate_off": true,
 	"mpo_off": true, "flip_immediate": true, "nic_power_off": true, "updates_pause": true,
-	"memory_compression_off": true, "timer_resolution": true, "nv_hdcp_off": true, "amd_graphics_perf": true, "gpu_msi_mode": true, "nv_driver_prefs": true, "svc_max_performance": true}
+	"memory_compression_off": true, "timer_resolution": true, "nv_hdcp_off": true, "amd_graphics_perf": true, "gpu_msi_mode": true, "nv_driver_prefs": true, "svc_max_performance": true,
+	"fix_valorant_hvci": true, "fix_defender": true, "fix_store_update": true, "ntfs_lastaccess_off": true,
+	"maintenance_off": true, "prevent_device_encryption": true, "remove_bloat_apps": true}
 
 func catalog() []Tweak {
 	list := append(rawCatalog(), extraCatalog()...)
@@ -178,6 +193,8 @@ func catalog() []Tweak {
 	list = append(list, ultimateCatalog()...)
 	list = append(list, setupCatalog()...)
 	list = append(list, maxPerfCatalog()...)
+	list = append(list, cleanCatalog()...)
+	list = append(list, fixesCatalog()...)
 	dedupeMaxPerf(list)
 	for i := range list {
 		list[i].Risk = "safe"

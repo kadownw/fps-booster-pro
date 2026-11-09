@@ -20,6 +20,8 @@ export function DiscordLogout():Promise<void>;
 
 export function DiscordState():Promise<main.DiscordUser>;
 
+export function FixCheck(arg1:string):Promise<main.FixCheckResult>;
+
 export function GameCover(arg1:string):Promise<string>;
 
 export function GameLibrary():Promise<Array<main.GameEntry>>;
@@ -31,6 +33,8 @@ export function GetSimulation():Promise<boolean>;
 export function GetSystemInfo():Promise<main.SysInfo>;
 
 export function InitError():Promise<string>;
+
+export function ListFixes():Promise<Array<main.FixView>>;
 
 export function ListProfiles():Promise<Array<main.Profile>>;
 
@@ -47,6 +51,8 @@ export function RevertAll():Promise<string>;
 export function RevertTweak(arg1:string):Promise<main.TweakOutcome>;
 
 export function RunCleanup(arg1:Array<string>):Promise<main.CleanOutcome>;
+
+export function RunFix(arg1:string):Promise<main.FixOutcome>;
 
 export function RunOnce(arg1:string):Promise<main.OnceOutcome>;
 

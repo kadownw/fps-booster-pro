@@ -53,13 +53,20 @@ export const ICONS = {
   play: 'M6 4l14 8-14 8z',
   grid: 'M4 4h7v7H4zM13 4h7v7h-7zM4 13h7v7H4zM13 13h7v7h-7z',
   lock: 'M6 11h12v9H6zM8 11V8a4 4 0 0 1 8 0v3',
+  wrench: 'M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94z',
+  wifi: 'M5 12.55a11 11 0 0 1 14.08 0M1.42 9a16 16 0 0 1 21.16 0M8.53 16.11a6 6 0 0 1 6.95 0M12 20h.01',
+  bluetooth: 'm7 7 10 10-5 5V2l5 5L7 17',
+  store: 'M6 2 3 6v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V6l-3-4zM3 6h18M16 10a4 4 0 0 1-8 0',
+  moon: 'M12 3a6 6 0 0 0 9 9 9 9 0 1 1-9-9z',
+  installer: 'M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16zM3.27 6.96 12 12.01l8.73-5.05M12 22.08V12',
+  valorant: 'M3 5h4l5 8 5-8h4L12 20z',
   user: 'M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2M12 11a4 4 0 1 0 0-8 4 4 0 0 0 0 8z',
 };
 
 // Icono de cada categoría de ajustes.
 export const CAT_ICON = {
   Todos: 'grid', Energía: 'bolt', Juegos: 'gamepad', Entrada: 'mouse', Visual: 'eye', Sistema: 'cpu',
-  GPU: 'gpu', Red: 'globe', Privacidad: 'shield', Servicios: 'cog', 'Acciones únicas': 'play',
+  GPU: 'gpu', Red: 'globe', Privacidad: 'shield', Fixes: 'wrench', Servicios: 'cog', 'Acciones únicas': 'play',
 };
 
 export const icon = (name, cls = '') => svg('svg', {

@@ -312,6 +312,9 @@ func (e *Engine) List() []TweakView {
 	adm := isAdmin()
 	var out []TweakView
 	for _, t := range catalog() {
+		if t.Fix {
+			continue // los arreglos viven en la pestaña Fixes
+		}
 		_, has := e.st.Items[t.ID]
 		active := e.isActive(t)
 		diag := e.diagnose(t, active)
@@ -355,6 +358,12 @@ func (e *Engine) Apply(id string) (err error) {
 	if !supported(t) {
 		return errors.New("este ajuste no aplica a tu equipo")
 	}
+	return e.applyCore(t)
+}
+
+// applyCore: guarda el original, aplica, verifica y hace rollback si falla. Se llama con el candado tomado.
+func (e *Engine) applyCore(t Tweak) (err error) {
+	id := t.ID
 	// Los planes de energía se excluyen entre sí: antes de activar uno se revierte el otro, así
 	// cada backup guarda el plan original del usuario.
 	if t.Power {

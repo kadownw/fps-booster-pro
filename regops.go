@@ -133,6 +133,9 @@ func writeState(c RegChange, st RegState) error {
 }
 
 func desired(c RegChange) RegState {
+	if c.Delete {
+		return RegState{}
+	}
 	return RegState{Exists: true, Kind: c.Kind, D: c.D, S: c.S, Hex: strings.ToLower(c.Hex)}
 }
 
@@ -204,6 +207,8 @@ func dateFor(spec string, now time.Time) string {
 // satisfied indica si el estado actual cumple lo que el cambio busca.
 func satisfied(c RegChange, st RegState) bool {
 	switch {
+	case c.Delete:
+		return !st.Exists
 	case c.KV != "":
 		return st.Exists && st.Kind == "sz" && kvHas(st.S, c.KV)
 	case c.Date != "":

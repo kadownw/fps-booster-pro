@@ -38,6 +38,10 @@ export function DiscordState() {
   return window['go']['main']['App']['DiscordState']();
 }
 
+export function FixCheck(arg1) {
+  return window['go']['main']['App']['FixCheck'](arg1);
+}
+
 export function GameCover(arg1) {
   return window['go']['main']['App']['GameCover'](arg1);
 }
@@ -60,6 +64,10 @@ export function GetSystemInfo() {
 
 export function InitError() {
   return window['go']['main']['App']['InitError']();
+}
+
+export function ListFixes() {
+  return window['go']['main']['App']['ListFixes']();
 }
 
 export function ListProfiles() {
@@ -92,6 +100,10 @@ export function RevertTweak(arg1) {
 
 export function RunCleanup(arg1) {
   return window['go']['main']['App']['RunCleanup'](arg1);
+}
+
+export function RunFix(arg1) {
+  return window['go']['main']['App']['RunFix'](arg1);
 }
 
 export function RunOnce(arg1) {

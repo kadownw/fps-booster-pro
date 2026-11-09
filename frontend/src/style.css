@@ -395,6 +395,23 @@ main { padding-bottom: 96px; }
 .tc-detail.unavailable { color: var(--muted); }
 .tcard.queued .tc-detail:empty, .tcard.show-why .tc-detail:empty { display: none; }
 .tcard.off { cursor: help; }
+.fixgrid { display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 14px; }
+.fixcard { display: flex; flex-direction: column; min-height: 200px; padding: 16px 18px; background: var(--surface); border: 1px solid var(--line); border-radius: var(--r-lg); transition: border-color .2s, background .2s; animation: rise .35s var(--ease) both; }
+.fixcard:hover { border-color: var(--line-2); background: #14171b; }
+.fix-head { display: flex; align-items: center; gap: 14px; }
+.fix-ico { width: 44px; height: 44px; flex: none; display: grid; place-items: center; border-radius: 10px; background: var(--surface-3); color: var(--muted); }
+.fix-ico .ico { width: 22px; height: 22px; }
+.fix-ico[data-brand="valorant"] { background: rgba(255, 70, 85, .16); color: #ff4655; }
+.fix-ico[data-brand="nvidia"] { background: rgba(118, 185, 0, .16); color: #76b900; }
+.fix-title { font-weight: 650; font-size: 15px; line-height: 1.25; }
+.fix-desc { flex: 1; margin: 4px 0 12px; color: var(--muted); font-size: 12.5px; line-height: 1.5; }
+.fix-foot { display: flex; align-items: flex-end; justify-content: space-between; gap: 10px; }
+.fix-foot .row { display: flex; gap: 8px; }
+.fix-run { background: rgba(255, 70, 85, .12); border-color: rgba(255, 70, 85, .35); }
+.fix-run:hover:not(:disabled) { background: rgba(255, 70, 85, .22); border-color: rgba(255, 70, 85, .6); }
+.fix-undo { background: transparent; color: var(--muted); }
+.fixlines { max-height: 220px; overflow-y: auto; }
+.fixlines .good { color: var(--accent); } .fixlines .bad { color: #ff7b7b; }
 .tc-detail.stale { opacity: .35; }
 .scanbar { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 14px; padding: 10px 14px; background: var(--surface); border: 1px solid var(--line); border-radius: var(--r-md); font-size: 12.5px; color: var(--muted); }
 .scanbar.busy { justify-content: flex-start; }

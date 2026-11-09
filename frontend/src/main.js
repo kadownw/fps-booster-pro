@@ -5,7 +5,7 @@ import {
   CreateRestorePoint,
   ScanCleanup, RunCleanup, ListStartup, SetStartup,
   CurrentGame, RunOnce, GameLibrary, GameCover, AppIcons,
-  DiscordState, DiscordLogin, DiscordLogout, SetViewAs,
+  DiscordState, DiscordLogin, DiscordLogout, SetViewAs, ListFixes, FixCheck, RunFix,
 } from '../wailsjs/go/main/App';
 import { h, svg, icon, fmtBytes, fmtDuration, zone, worst, GLOW, colorAt, CAT_ICON } from './lib.js';
 import { tickGauge } from './gauge.js';
@@ -684,10 +684,78 @@ function pageStartup() {
   ListStartup().then((l) => { S.startup = l || []; if (el.content.contains(wrap)) render(); });
   return [pageHead('Inicio de Windows', 'Desactivá programas que arrancan con Windows. No se borra nada: podés volver a activarlos.'), wrap];
 }
+// ---------- Fixes: arreglos de problemas comunes de Windows ----------
+const FIX_BRAND = { valorant: 'valorant', nvidia: 'nvidia' };
+
+async function fixFlow(f, btn) {
+  if (S.busy) return;
+  btn.disabled = true; const label = btn.textContent; btn.textContent = 'Leyendo tu PC…';
+  let chk;
+  try { chk = await FixCheck(f.id); } catch (e) { chk = { error: String(e) }; }
+  btn.disabled = false; btn.textContent = label;
+  if (chk.error) { toast(chk.error, 'err'); return; }
+  if (!chk.problems.length && !chk.always) {
+    await dialog(f.title, [h('p', {}, 'No se encontró el problema en tu PC.'), h('p', { class: 'dim' }, chk.healthy || ''), h('p', { class: 'dim' }, 'No se cambió nada.')], { ok: 'Entendido', cancel: null });
+    return;
+  }
+  const body = [
+    h('p', {}, f.description),
+    chk.problems.length > 0 && h('p', { class: 'k', style: 'margin:10px 0 4px' }, 'Lo que encontré en tu PC:'),
+    chk.problems.length > 0 && h('ul', { class: 'mini' }, chk.problems.map((p) => h('li', {}, p))),
+    f.reboot && h('p', { class: 'warn' }, 'Necesita reiniciar Windows para tener efecto.'),
+    !f.admin ? null : (S.info.admin ? null : h('p', { class: 'warn' }, 'Necesita permisos de administrador.')),
+  ];
+  const r = await dialog(f.title, body, { ok: chk.always ? 'Ejecutar' : 'Arreglar' });
+  if (!r.ok) return;
+  S.busy = true; paintState(); btn.disabled = true; btn.textContent = 'Arreglando…';
+  let res;
+  try { res = await RunFix(f.id); } catch (e) { res = { error: String(e), lines: [] }; }
+  S.busy = false; paintState();
+  await dialog(res.error ? 'No se pudo arreglar todo' : 'Listo', [
+    h('p', { class: res.error ? 'warn' : '' }, res.error || res.message),
+    res.lines && res.lines.length > 0 && h('ul', { class: 'mini fixlines' }, res.lines.map((l) => h('li', { class: l.startsWith('✗') ? 'bad' : (l.startsWith('✓') ? 'good' : '') }, l))),
+    res.reboot && !res.error && h('p', { class: 'warn' }, 'Reiniciá Windows para que el cambio se aplique.'),
+  ], { ok: 'Cerrar', cancel: null });
+  pageFixesRefresh();
+}
+
+let pageFixesRefresh = () => {};
+
+function pageFixes() {
+  const grid = h('div', { class: 'fixgrid' });
+  const draw = (list) => {
+    grid.replaceChildren(...list.map((f) => {
+      const run = h('button', { class: 'fix-run', 'data-needbusy': 1 }, 'Ejecutar arreglo');
+      run.onclick = () => fixFlow(f, run);
+      const undo = f.canUndo ? h('button', { class: 'fix-undo', 'data-needbusy': 1, onclick: async () => {
+        if (S.busy) return;
+        S.busy = true; paintState();
+        const o = await RevertTweak(f.id);
+        S.busy = false; paintState();
+        if (o.error) toast(o.error, 'err'); else toast(o.message, 'ok');
+        pageFixesRefresh();
+      } }, 'Deshacer') : null;
+      return h('div', { class: 'fixcard' },
+        h('div', { class: 'fix-head' }, h('div', { class: 'fix-ico', 'data-brand': FIX_BRAND[f.icon] || '' }, icon(f.icon === 'nvidia' ? 'gpu' : f.icon)), h('div', { class: 'fix-title' }, f.title)),
+        h('div', { class: 'tc-rule' }),
+        h('p', { class: 'fix-desc' }, f.description),
+        h('div', { class: 'fix-foot' },
+          h('div', { class: 'tc-tags' }, f.admin && h('span', { class: 'tag adm' }, 'Admin'), f.reboot && h('span', { class: 'tag' }, 'Reinicio'), f.lastRun && h('span', { class: 'tc-last' }, `Última vez: ${fmtWhen(f.lastRun)}`)),
+          h('div', { class: 'row' }, undo, run)));
+    }));
+  };
+  const load = async () => { const l = (await ListFixes()) || []; if (el.content.contains(grid)) draw(l); };
+  pageFixesRefresh = load;
+  grid.replaceChildren(h('div', { class: 'glass empty' }, h('div', { class: 'spin' }), ' Cargando arreglos…'));
+  load();
+  return [pageHead('Fixes', 'Arreglos rápidos para problemas comunes de Windows. Cada uno revisa tu PC primero y solo cambia lo que está mal.'), grid];
+}
+
 const PAGES = [
   { id: 'home', label: 'Inicio', icon: 'home', render: pageHome },
   { id: 'games', label: 'Mis juegos', icon: 'gamepad', render: pageGames },
   { id: 'settings', label: 'Optimizar', icon: 'sliders', render: pageSettings },
+  { id: 'fixes', label: 'Fixes', icon: 'wrench', render: pageFixes },
   { id: 'clean', label: 'Limpieza', icon: 'trash', render: pageClean },
   { id: 'startup', label: 'Inicio de Windows', icon: 'rocket', render: pageStartup },
 ];

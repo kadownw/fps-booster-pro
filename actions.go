@@ -116,6 +116,11 @@ func (e *Engine) RunOnce(id string) (summary string, err error) {
 		if err != nil {
 			return "", err
 		}
+	case "remove_bloat_apps":
+		summary, noop, err = removeBloat()
+		if err != nil {
+			return "", err
+		}
 	case "bitlocker_off":
 		summary, noop, err = bitlockerOff()
 		if err != nil {
@@ -288,4 +293,31 @@ func removeAppxReport(pattern, label string) (summary string, noop bool, err err
 		return "", false, errors.New(msg)
 	}
 	return fmt.Sprintf("Verificado con Windows: %s desinstalado (%d paquete/s quitados, 0 quedan).", label, removed), false, nil
+}
+
+// removeBloat quita la lista fija de apps y resume lo que Windows confirma de cada una.
+func removeBloat() (summary string, noop bool, err error) {
+	var removed, absent, failed []string
+	for _, b := range bloatApps {
+		_, nop, rerr := removeAppxReport(b[0], b[1])
+		switch {
+		case rerr != nil:
+			failed = append(failed, b[1]+" ("+strings.TrimSpace(rerr.Error())+")")
+		case nop:
+			absent = append(absent, b[1])
+		default:
+			removed = append(removed, b[1])
+		}
+	}
+	if len(failed) > 0 {
+		msg := "Algunas apps no se pudieron quitar: " + strings.Join(failed, "; ") + "."
+		if len(removed) > 0 {
+			msg += " Sí se quitaron: " + strings.Join(removed, ", ") + "."
+		}
+		return "", false, errors.New(msg)
+	}
+	if len(removed) == 0 {
+		return fmt.Sprintf("Ninguna de las %d apps de la lista está instalada: no había nada que quitar. No se cambió nada.", len(bloatApps)), true, nil
+	}
+	return fmt.Sprintf("Verificado con Windows: se quitaron %s. Ya no estaban instaladas: %d.", strings.Join(removed, ", "), len(absent)), false, nil
 }

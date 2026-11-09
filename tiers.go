@@ -29,6 +29,9 @@ var freeTweaks = map[string]bool{
 
 // tweakAllowed: tier "" = sin sesión iniciada (no se permite nada).
 func tweakAllowed(tier, id string) bool {
+	if tier != "" && isFixID(id) { // los arreglos de Windows están en todos los niveles
+		return true
+	}
 	switch tier {
 	case tierPro, tierOwner:
 		return true
@@ -57,4 +60,9 @@ func loadViewAs() string {
 func saveViewAs(t string) {
 	b, _ := json.Marshal(struct{ Tier string }{t})
 	_ = os.WriteFile(filepath.Join(discordDir(), "viewas.json"), b, 0o600)
+}
+
+func isFixID(id string) bool {
+	t, ok := findTweak(id)
+	return ok && t.Fix
 }

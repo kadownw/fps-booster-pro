@@ -258,6 +258,28 @@ func (a *App) SetViewAs(tier string) DiscordUser {
 	return a.decorateLocked()
 }
 
+// Fixes: arreglos de problemas comunes de Windows.
+func (a *App) ListFixes() []FixView {
+	if a.engine == nil {
+		return nil
+	}
+	return a.engine.ListFixes()
+}
+
+func (a *App) FixCheck(id string) FixCheckResult {
+	if a.engine == nil {
+		return FixCheckResult{Error: a.initEr}
+	}
+	return a.engine.FixCheck(id)
+}
+
+func (a *App) RunFix(id string) FixOutcome {
+	if a.engine == nil {
+		return FixOutcome{Error: a.initEr}
+	}
+	return a.engine.RunFix(id)
+}
+
 // AppIcons: ruta del programa -> icono (data URL PNG).
 func (a *App) AppIcons(paths []string) map[string]string { return AppIcons(paths) }
 

@@ -106,6 +106,72 @@ export namespace main {
 	        this.usedPct = source["usedPct"];
 	    }
 	}
+	export class FixCheckResult {
+	    problems: string[];
+	    healthy: string;
+	    always: boolean;
+	    error: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new FixCheckResult(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.problems = source["problems"];
+	        this.healthy = source["healthy"];
+	        this.always = source["always"];
+	        this.error = source["error"];
+	    }
+	}
+	export class FixOutcome {
+	    message: string;
+	    error: string;
+	    lines: string[];
+	    noop: boolean;
+	    reboot: boolean;
+	
+	    static createFrom(source: any = {}) {
+	        return new FixOutcome(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.message = source["message"];
+	        this.error = source["error"];
+	        this.lines = source["lines"];
+	        this.noop = source["noop"];
+	        this.reboot = source["reboot"];
+	    }
+	}
+	export class FixView {
+	    id: string;
+	    title: string;
+	    description: string;
+	    icon: string;
+	    admin: boolean;
+	    reboot: boolean;
+	    risk: string;
+	    lastRun?: string;
+	    canUndo: boolean;
+	
+	    static createFrom(source: any = {}) {
+	        return new FixView(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.id = source["id"];
+	        this.title = source["title"];
+	        this.description = source["description"];
+	        this.icon = source["icon"];
+	        this.admin = source["admin"];
+	        this.reboot = source["reboot"];
+	        this.risk = source["risk"];
+	        this.lastRun = source["lastRun"];
+	        this.canUndo = source["canUndo"];
+	    }
+	}
 	export class GPULive {
 	    name: string;
 	    temp: number;
@@ -417,6 +483,8 @@ export namespace main {
 	    kv?: string;
 	    ifExists?: boolean;
 	    date?: string;
+	    delete?: boolean;
+	    ifCurrent?: number;
 	
 	    static createFrom(source: any = {}) {
 	        return new RegChange(source);
@@ -436,6 +504,8 @@ export namespace main {
 	        this.kv = source["kv"];
 	        this.ifExists = source["ifExists"];
 	        this.date = source["date"];
+	        this.delete = source["delete"];
+	        this.ifCurrent = source["ifCurrent"];
 	    }
 	}
 	export class TweakView {
@@ -455,6 +525,8 @@ export namespace main {
 	    planId?: string;
 	    nvidia?: NvSetting[];
 	    once?: boolean;
+	    fix?: boolean;
+	    icon?: string;
 	    active: boolean;
 	    canUndo: boolean;
 	    blocked: boolean;
@@ -486,6 +558,8 @@ export namespace main {
 	        this.planId = source["planId"];
 	        this.nvidia = this.convertValues(source["nvidia"], NvSetting);
 	        this.once = source["once"];
+	        this.fix = source["fix"];
+	        this.icon = source["icon"];
 	        this.active = source["active"];
 	        this.canUndo = source["canUndo"];
 	        this.blocked = source["blocked"];

@@ -15,7 +15,7 @@ func TestAdminRoundTrip(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	for _, id := range []string{"usb_recovery", "svc_xbox_manual", "telemetry", "error_reporting", "bg_apps", "search_local", "mouse_raw_curve", "nvidia_profile", "svchost_split", "mpo_off", "flip_immediate", "nic_power_off", "updates_pause", "trim_on", "store_autoupdate_off", "timer_resolution", "startup_sound_off", "memory_compression_off", "gpu_msi_mode", "nv_driver_prefs", "nv_hdcp_off", "svc_max_performance"} {
+	for _, id := range []string{"exclude_wu_drivers", "edge_background_off", "maintenance_off", "ntfs_lastaccess_off", "prevent_device_encryption", "fix_wifi", "fix_bluetooth", "fix_power_sleep", "fix_store_update", "fix_defender", "fix_valorant_hvci", "usb_recovery", "svc_xbox_manual", "telemetry", "error_reporting", "bg_apps", "search_local", "mouse_raw_curve", "nvidia_profile", "svchost_split", "mpo_off", "flip_immediate", "nic_power_off", "updates_pause", "trim_on", "store_autoupdate_off", "timer_resolution", "startup_sound_off", "memory_compression_off", "gpu_msi_mode", "nv_driver_prefs", "nv_hdcp_off", "svc_max_performance"} {
 		tw, _ := findTweak(id)
 		if !supported(tw) {
 			t.Logf("%s: no aplica a este equipo, se omite", id)
