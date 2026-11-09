@@ -46,8 +46,10 @@ type DiscordUser struct {
 	Configured bool   `json:"configured"`
 	ID         string `json:"id"`
 	Name       string `json:"name"`
-	Avatar     string `json:"avatar"` // data URL
-	Tier       string `json:"tier"`   // "Free Tier" | "Pro Tier" | "Propietario"
+	Avatar     string `json:"avatar"`    // data URL
+	Tier       string `json:"tier"`      // nivel real: "Free Tier" | "Pro Tier" | "Propietario"
+	Owner      bool   `json:"owner"`     // es Propietario (puede cambiar de vista)
+	Effective  string `json:"effective"` // nivel con el que se muestra la app (vista del Propietario)
 	Error      string `json:"error"`
 }
 
@@ -55,6 +57,10 @@ type discordConfig struct {
 	ClientID string `json:"clientId"`
 	TierURL  string `json:"tierUrl,omitempty"`
 }
+
+// Aplicación de Discord de South Tweaks. Hay que tener agregado en OAuth2 → Redirects:
+// http://127.0.0.1:53682/callback
+const defaultClientID = "1569198430893510716"
 
 type tierList struct {
 	Owners []string `json:"owners"`
@@ -75,6 +81,9 @@ func loadDiscordConfig() discordConfig {
 	var c discordConfig
 	if b, err := os.ReadFile(filepath.Join(discordDir(), "config.json")); err == nil {
 		json.Unmarshal(b, &c)
+	}
+	if c.ClientID == "" {
+		c.ClientID = defaultClientID
 	}
 	return c
 }

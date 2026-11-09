@@ -5,7 +5,7 @@ import {
   CreateRestorePoint,
   ScanCleanup, RunCleanup, ListStartup, SetStartup,
   CurrentGame, RunOnce, GameLibrary, GameCover, AppIcons,
-  DiscordState, DiscordLogin, DiscordLogout, DiscordSetClientID,
+  DiscordState, DiscordLogin, DiscordLogout, SetViewAs,
 } from '../wailsjs/go/main/App';
 import { h, svg, icon, fmtBytes, fmtDuration, zone, worst, GLOW, colorAt, CAT_ICON } from './lib.js';
 import { tickGauge } from './gauge.js';
@@ -227,7 +227,10 @@ function buildRow(t) {
     h('div', { class: 'tc-rule' }),
     h('p', { class: 'tc-desc' }, t.description),
     h('div', { class: 'tc-foot' }, h('div', { class: 'tc-tags' }, tags, last), control));
-  const r = { row, input, btn, tags, last, t };
+  const lock = h('button', { class: 'lock-cover', hidden: true, onclick: () => upgradeDialog(S.rows.get(t.id).t.title) },
+    icon('lock'), h('b', {}, 'Pro Tier'), h('span', {}, 'Upgrade · próximamente'));
+  row.append(lock);
+  const r = { row, input, btn, tags, last, t, lock };
   S.rows.set(t.id, r);
   return r;
 }
@@ -236,18 +239,21 @@ function paintRow(r, t) {
   r.t = t;
   r.row.classList.toggle('on', t.active);
   r.row.classList.toggle('off', t.disabled);
+  r.row.classList.toggle('locked', !!t.locked);
+  r.lock.hidden = !t.locked;
   const blocked = t.disabled || (t.blocked && !t.active);
   const q = Q.get(t.id);
   r.row.classList.toggle('queued', !!q);
-  if (r.input) { r.input.checked = q ? q === 'apply' : t.active; r.input.disabled = S.busy || blocked; }
+  if (r.input) { r.input.checked = q ? q === 'apply' : t.active; r.input.disabled = S.busy || blocked || (t.locked && !t.active); }
   if (r.btn) {
-    r.btn.disabled = S.busy || t.disabled || t.blocked;
+    r.btn.disabled = S.busy || t.disabled || t.blocked || t.locked;
     r.btn.textContent = q === 'once' ? 'En la cola ✓' : 'Agregar';
     r.btn.classList.toggle('primary', q === 'once');
   }
-  r.row.title = t.disabled ? 'No aplica a tu equipo' : (t.blocked ? 'Requiere administrador' : '');
+  r.row.title = t.locked ? 'Incluido en Pro Tier' : t.disabled ? 'No aplica a tu equipo' : (t.blocked ? 'Requiere administrador' : '');
   r.last.textContent = t.once && t.lastRun ? `Última vez: ${fmtWhen(t.lastRun)}` : '';
   r.tags.replaceChildren(...[
+    t.locked && h('span', { class: 'tag pro' }, 'Pro'),
     t.once ? h('span', { class: 'tag once' }, 'Una vez') : h('span', { class: 'tag ' + t.risk }, RISK[t.risk] || t.risk),
     t.admin && h('span', { class: 'tag adm' }, 'Admin'),
     t.reboot && h('span', { class: 'tag' }, 'Reinicio'),
@@ -264,8 +270,14 @@ function paintSettingsList() {
   if (!el.list || !el.list.isConnected) return;
   const frag = document.createDocumentFragment();
   const cats = [...new Set(S.tweaks.filter(visible).map((t) => t.category))];
+  if (el.upgradeBanner) {
+    const n = S.tweaks.filter((t) => t.locked).length;
+    el.upgradeBanner.hidden = !n;
+    el.upgradeBanner.replaceChildren(icon('lock'), h('div', {}, h('b', {}, 'Free Tier: ajustes básicos'),
+      h('p', {}, `Tenés ${S.tweaks.filter((t) => !t.locked && !t.disabled).length} ajustes disponibles. ${n} más están en Pro Tier (el upgrade llega pronto).`)));
+  }
   for (const c of cats) {
-    const items = S.tweaks.filter((x) => x.category === c && visible(x));
+    const items = S.tweaks.filter((x) => x.category === c && visible(x)).sort((a, b) => (a.locked ? 1 : 0) - (b.locked ? 1 : 0));
     frag.append(h('div', { class: 'section' }, catIco(c), h('h2', {}, c), h('span', { class: 'count' }, items.length)));
     frag.append(h('div', { class: 'tgrid' }, items.map((t) => S.rows.get(t.id).row)));
   }
@@ -507,7 +519,9 @@ function gameCard(g, playing) {
     ? h('div', { class: 'cv-over' },
       h('div', { class: 'cv-t' }, g.game),
       h('div', { class: 'cv-k' }, 'Media de FPS en la sesión'), h('div', { class: 'cv-big' }, fpsNum(g.avgFps)),
-      h('div', { class: 'cv-row' }, stat2('0.1% low', g.low01Fps), stat2('1% low', g.low1Fps)),
+      fullAccess()
+        ? h('div', { class: 'cv-row' }, stat2('0.1% low', g.low01Fps), stat2('1% low', g.low1Fps))
+        : h('button', { class: 'cv-pro', onclick: () => upgradeDialog('0.1 % y 1 % low') }, icon('lock'), '0.1% y 1% low · Pro Tier'),
       h('div', { class: 'cv-sub' }, fmtWhen(g.sessionAt)))
     : h('div', { class: 'cv-over' },
       h('div', { class: 'cv-t' }, g.game),
@@ -544,10 +558,11 @@ function pageSettings() {
   el.simBox = h('input', { type: 'checkbox', checked: S.sim, onchange: async (e) => { await SetSimulation(e.target.checked); S.sim = e.target.checked; await refresh(); } });
   el.revertAll = h('button', { class: 'danger', onclick: revertAllFlow }, 'Revertir todo');
   el.simBanner = h('div', { class: 'banner info', hidden: true }, 'Modo simulación: no se modifica nada en tu Windows.');
+  el.upgradeBanner = h('div', { class: 'banner upsell', hidden: true });
   setTimeout(() => { paintChips(); paintSettingsList(); paintState(); }, 0);
   return [
     pageHead('Optimizar', 'Elegí lo que querés activar o desactivar y aplicalo todo junto desde la barra de abajo. Las acciones únicas no se pueden deshacer.', el.search),
-    el.simBanner,
+    el.simBanner, el.upgradeBanner,
     h('div', { class: 'toolbar' }, el.chips,
       h('div', { class: 'row' }, h('label', { class: 'chk' }, el.simBox, 'Modo simulación'), el.revertAll)),
     el.list,
@@ -604,6 +619,12 @@ function pageClean() {
 
 function pageStartup() {
   const wrap = h('div');
+  if (!fullAccess()) {
+    return [pageHead('Inicio de Windows', 'Desactivá programas que arrancan con Windows.'),
+      h('div', { class: 'glass upsell-card' }, icon('lock', 'big'), h('h3', {}, 'Disponible en Pro Tier'),
+        h('p', {}, 'Con Pro Tier elegís qué programas arrancan con Windows, con el icono de cada uno. El upgrade llega pronto.'),
+        h('button', { class: 'primary', onclick: () => upgradeDialog('Inicio de Windows') }, 'Ver Pro Tier'))];
+  }
   const render = () => {
     const items = S.startup;
     if (!items) { wrap.replaceChildren(h('div', { class: 'glass empty' }, h('div', { class: 'spin' }), ' Leyendo programas de inicio…')); return; }
@@ -652,59 +673,94 @@ function go(id) {
   paintState();
 }
 
-// ---------- usuario / Discord ----------
+// ---------- sesión, niveles y Discord ----------
 const TIER_CLASS = { 'Propietario': 'owner', 'Pro Tier': 'pro', 'Free Tier': 'free' };
-const REDIRECT = 'http://127.0.0.1:53682/callback';
+const effective = () => (S.discord && S.discord.effective) || '';
+const fullAccess = () => effective() === 'Pro Tier' || effective() === 'Propietario';
 
-async function configureDiscord() {
-  const input = h('input', { class: 'search', style: 'width:100%;margin-top:10px', placeholder: 'Application ID (solo números)', value: '' });
-  const r = await dialog('Conectar con Discord', [
-    h('p', {}, 'Para iniciar sesión con Discord necesitás una aplicación propia (gratis):'),
-    h('ol', { class: 'mini steps' },
-      h('li', {}, 'Entrá a discord.com/developers/applications y creá una aplicación.'),
-      h('li', {}, 'En «OAuth2 → Redirects» agregá exactamente:', h('code', { class: 'copy' }, REDIRECT)),
-      h('li', {}, 'Copiá el «Application ID» de «General Information» y pegalo acá.')),
-    input,
-    h('p', { class: 'dim', style: 'margin-top:8px' }, 'Solo se pide el permiso «identify» (nombre, id y foto). No se guarda ningún token.')], { ok: 'Guardar y continuar' });
-  if (!r.ok) return false;
-  const err = await DiscordSetClientID(input.value);
-  if (err) { toast(err, 'err'); return false; }
-  S.discord = { ...(S.discord || {}), configured: true };
-  return true;
+function upgradeDialog(what) {
+  return dialog('Pro Tier', [
+    h('p', {}, `«${what}» es parte de Pro Tier.`),
+    h('p', { class: 'dim' }, 'Pro Tier desbloquea todos los ajustes, las acciones únicas, el control del inicio de Windows y los FPS 0.1% / 1% low. Muy pronto vas a poder hacer el upgrade desde acá.')], { ok: 'Entendido', cancel: null });
+}
+
+// Pantalla de inicio de sesión: tapa toda la app hasta que haya sesión.
+let gate = null;
+function showGate(errMsg) {
+  if (gate) gate.remove();
+  const btn = h('button', { class: 'discord-btn', onclick: () => discordLogin() }, 'Iniciar sesión con Discord');
+  const note = h('p', { class: 'gate-err' }, errMsg || '');
+  gate = h('div', { class: 'gate' },
+    h('div', { class: 'gate-card' },
+      h('div', { class: 'logo big' }, 'ST'),
+      h('h1', {}, 'South Tweaks'),
+      h('p', { class: 'gate-sub' }, 'Iniciá sesión con tu cuenta de Discord para entrar. Solo leemos tu nombre y tu foto: no se guarda ninguna contraseña ni token.'),
+      btn, note,
+      h('p', { class: 'dim', style: 'margin-top:16px' }, 'Se abre tu navegador para autorizar el acceso.')));
+  gate.btn = btn; gate.note = note;
+  document.body.append(gate);
+}
+function hideGate() { if (gate) { gate.remove(); gate = null; } }
+
+async function onSession(u) {
+  S.discord = u;
+  paintUser();
+  if (u.loggedIn) { hideGate(); await refresh(); go(S.page === 'home' || !S.page ? 'home' : S.page); }
+  else showGate();
 }
 
 async function discordLogin() {
-  if (!(S.discord && S.discord.configured) && !(await configureDiscord())) return;
-  toast('Se abrió tu navegador: autorizá el acceso en Discord.');
-  S.discordBusy = true; paintUser();
-  try {
-    const r = await DiscordLogin();
-    if (r.error) toast(r.error, 'err'); else { S.discord = r; toast(`Hola, ${r.name} · ${r.tier}`, 'ok'); }
-  } catch (e) { toast(String(e), 'err'); }
-  S.discordBusy = false; paintUser();
-  if (S.page === 'home') go('home');
+  if (S.discordBusy) return;
+  S.discordBusy = true;
+  if (gate) { gate.btn.disabled = true; gate.btn.textContent = 'Esperando a Discord…'; gate.note.textContent = ''; }
+  paintUser();
+  let res;
+  try { res = await DiscordLogin(); } catch (e) { res = { error: String(e) }; }
+  S.discordBusy = false;
+  if (res.error) {
+    if (gate) { gate.btn.disabled = false; gate.btn.textContent = 'Iniciar sesión con Discord'; gate.note.textContent = res.error; }
+    else toast(res.error, 'err');
+    paintUser();
+    return;
+  }
+  await onSession(res);
+  toast(`Hola, ${res.name} · ${res.tier}`, 'ok');
 }
 
 function closeUserMenu() { document.querySelectorAll('.umenu').forEach((m) => m.remove()); }
+
+async function setView(tier) {
+  closeUserMenu();
+  const u = await SetViewAs(tier);
+  S.discord = u;
+  Q.clear();
+  paintUser(); await refresh();
+  go(S.page);
+  toast(`Vista: ${tier}`, 'ok');
+}
 
 function paintUser() {
   if (!el.user) return;
   const d = S.discord || {};
   const logged = !!d.loggedIn;
   const avatar = h('div', { class: 'avatar' + (logged && d.avatar ? ' img' : '') }, logged && d.avatar ? h('img', { src: d.avatar, alt: '', draggable: 'false' }) : icon('user'));
-  const name = S.discordBusy ? 'Esperando a Discord…' : (logged ? d.name : 'Iniciar sesión');
-  const sub = S.discordBusy ? 'Autorizá en el navegador' : (logged ? d.tier : 'con Discord');
+  const viewing = logged && d.owner && d.effective && d.effective !== d.tier;
+  const sub = S.discordBusy ? 'Autorizá en el navegador' : (logged ? d.tier + (viewing ? ' · vista ' + d.effective : '') : 'con Discord');
   el.user.replaceChildren(avatar,
-    h('div', { class: 'u-txt' }, h('b', {}, name), h('small', { class: logged ? 'tier ' + (TIER_CLASS[d.tier] || 'free') : '' }, sub)),
-    logged ? icon('chevron', 'u-chev') : null);
+    h('div', { class: 'u-txt' }, h('b', {}, S.discordBusy ? 'Esperando a Discord…' : (logged ? d.name : 'Sin sesión')), h('small', { class: logged ? 'tier ' + (TIER_CLASS[d.tier] || 'free') : '' }, sub)),
+    ...(logged ? [icon('chevron', 'u-chev')] : []));
   el.user.onclick = (e) => {
     e.stopPropagation();
-    if (S.discordBusy) return;
-    if (!logged) { discordLogin(); return; }
+    if (!logged || S.discordBusy) return;
     if (document.querySelector('.umenu')) { closeUserMenu(); return; }
+    const opt = (tier, label) => h('button', { class: d.effective === tier ? 'cur' : '', onclick: () => setView(tier) }, d.effective === tier ? '✓ ' + label : label);
     const menu = h('div', { class: 'umenu' },
-      h('button', { onclick: async () => { closeUserMenu(); await DiscordLogout(); S.discord = { ...d, loggedIn: false, name: '', avatar: '', tier: '' }; paintUser(); if (S.page === 'home') go('home'); toast('Sesión cerrada'); } }, 'Cerrar sesión'),
-      h('button', { onclick: async () => { closeUserMenu(); await configureDiscord(); } }, 'Cambiar Application ID'));
+      d.owner && h('div', { class: 'um-h' }, 'Ver la app como'),
+      d.owner && opt('Propietario', 'Propietario (todo)'),
+      d.owner && opt('Pro Tier', 'Pro Tier'),
+      d.owner && opt('Free Tier', 'Free Tier'),
+      d.owner && h('div', { class: 'um-sep' }),
+      h('button', { onclick: async () => { closeUserMenu(); await DiscordLogout(); Q.clear(); await onSession({ loggedIn: false }); } }, 'Cerrar sesión'));
     el.user.append(menu);
     setTimeout(() => document.addEventListener('click', closeUserMenu, { once: true }), 0);
   };
@@ -769,9 +825,9 @@ async function tick() {
   }
   build();
   paintUser();
-  DiscordState().then((d) => { S.discord = d; paintUser(); if (S.page === 'home') go('home'); }).catch(() => {});
-  await refresh();
   S.live = await GetLive();
-  go('home');
+  S.discord = await DiscordState().catch(() => ({ loggedIn: false }));
+  paintUser();
+  if (S.discord.loggedIn) { await refresh(); go('home'); } else showGate();
   setInterval(tick, 2000);
 })();

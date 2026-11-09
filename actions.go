@@ -56,6 +56,9 @@ func (e *Engine) RunOnce(id string) (summary string, err error) {
 	if !ok || !t.Once {
 		return "", fmt.Errorf("%q no es una acción única", id)
 	}
+	if e.tier != nil && !tweakAllowed(e.tier(), id) {
+		return "", errTier
+	}
 	if e.sim {
 		return "Simulación: no se ejecutó nada.", nil
 	}

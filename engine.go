@@ -108,6 +108,7 @@ type Engine struct {
 	sim        bool
 	simApplied map[string]bool
 	runs       map[string]string // última ejecución de acciones únicas (RFC3339)
+	tier       func() string     // nivel de la cuenta (nil = sin restricciones, p. ej. en pruebas)
 }
 
 func NewEngine() (*Engine, error) {
@@ -221,6 +222,7 @@ type TweakView struct {
 	Blocked  bool   `json:"blocked"`           // requiere admin y no lo tenemos
 	Disabled bool   `json:"disabled"`          // no aplica a este equipo (p. ej. no hay GPU de ese fabricante)
 	LastRun  string `json:"lastRun,omitempty"` // última vez que se ejecutó una acción única
+	Locked   bool   `json:"locked"`            // el nivel de la cuenta no lo incluye (Free Tier)
 }
 
 func (e *Engine) List() []TweakView {
@@ -237,6 +239,7 @@ func (e *Engine) List() []TweakView {
 			Blocked:  t.Admin && !adm && !e.sim,
 			Disabled: !supported(t),
 			LastRun:  e.runs[t.ID],
+			Locked:   e.tier != nil && !tweakAllowed(e.tier(), t.ID),
 		})
 	}
 	return out
@@ -250,6 +253,9 @@ func (e *Engine) Apply(id string) (err error) {
 	t, ok := findTweak(id)
 	if !ok {
 		return fmt.Errorf("ajuste desconocido: %s", id)
+	}
+	if e.tier != nil && !tweakAllowed(e.tier(), id) {
+		return errTier
 	}
 	if t.Once {
 		return errors.New("esta es una acción única: usá el botón Aplicar")

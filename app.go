@@ -20,11 +20,17 @@ type App struct {
 	liveMu   sync.Mutex
 	lastLive Live
 	hasLive  bool
+	userMu   sync.Mutex
+	user     DiscordUser
+	viewAs   string
 }
 
 func NewApp() *App {
 	e, err := NewEngine()
-	a := &App{engine: e}
+	a := &App{engine: e, viewAs: loadViewAs()}
+	if e != nil {
+		e.tier = a.effectiveTier
+	}
 	go taskStates() // precalienta la consulta de tareas programadas (tarda ~2 s)
 	if err != nil {
 		a.initEr = err.Error()
@@ -189,10 +195,61 @@ func (a *App) RunCleanup(ids []string) CleanOutcome {
 
 func (a *App) ListStartup() []StartupEntry { return ListStartup() }
 
-func (a *App) DiscordState() DiscordUser           { return DiscordState() }
-func (a *App) DiscordLogin() DiscordUser           { return DiscordLogin() }
-func (a *App) DiscordLogout()                      { DiscordLogout() }
-func (a *App) DiscordSetClientID(id string) string { return DiscordSetClientID(id) }
+func (a *App) setUser(u DiscordUser) DiscordUser {
+	a.userMu.Lock()
+	defer a.userMu.Unlock()
+	a.user = u
+	return a.decorateLocked()
+}
+
+// decorateLocked completa los campos que dependen de la vista del Propietario.
+func (a *App) decorateLocked() DiscordUser {
+	u := a.user
+	u.Owner = u.LoggedIn && u.Tier == tierOwner
+	u.Effective = a.effectiveLocked()
+	return u
+}
+
+func (a *App) effectiveLocked() string {
+	if !a.user.LoggedIn {
+		return ""
+	}
+	if a.user.Tier == tierOwner && validTier(a.viewAs) {
+		return a.viewAs
+	}
+	return a.user.Tier
+}
+
+// effectiveTier: nivel con el que funciona la app ("" = sin sesión).
+func (a *App) effectiveTier() string {
+	a.userMu.Lock()
+	defer a.userMu.Unlock()
+	return a.effectiveLocked()
+}
+
+func (a *App) DiscordState() DiscordUser { return a.setUser(DiscordState()) }
+func (a *App) DiscordLogin() DiscordUser {
+	u := DiscordLogin()
+	if u.Error != "" {
+		return a.setUser(DiscordUser{Configured: u.Configured, Error: u.Error})
+	}
+	return a.setUser(u)
+}
+func (a *App) DiscordLogout() {
+	DiscordLogout()
+	a.setUser(DiscordUser{Configured: true})
+}
+
+// SetViewAs: el Propietario elige con qué nivel quiere ver la app (Free, Pro o Propietario).
+func (a *App) SetViewAs(tier string) DiscordUser {
+	a.userMu.Lock()
+	defer a.userMu.Unlock()
+	if a.user.Tier == tierOwner && validTier(tier) {
+		a.viewAs = tier
+		saveViewAs(tier)
+	}
+	return a.decorateLocked()
+}
 
 // AppIcons: ruta del programa -> icono (data URL PNG).
 func (a *App) AppIcons(paths []string) map[string]string { return AppIcons(paths) }
@@ -205,10 +262,19 @@ func (a *App) GameLibrary() []GameEntry {
 	if a.games == nil {
 		return nil
 	}
-	return gameLibrary(a.games.Sessions())
+	lib := gameLibrary(a.games.Sessions())
+	if !fullAccess(a.effectiveTier()) { // Free Tier: sin los 0.1 % y 1 % low
+		for i := range lib {
+			lib[i].Low1FPS, lib[i].Low01FPS = 0, 0
+		}
+	}
+	return lib
 }
 
 func (a *App) SetStartup(id string, enabled bool) string {
+	if !fullAccess(a.effectiveTier()) {
+		return errTier.Error()
+	}
 	if err := SetStartup(id, enabled); err != nil {
 		return err.Error()
 	}

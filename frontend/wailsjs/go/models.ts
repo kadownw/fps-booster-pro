@@ -67,6 +67,8 @@ export namespace main {
 	    name: string;
 	    avatar: string;
 	    tier: string;
+	    owner: boolean;
+	    effective: string;
 	    error: string;
 	
 	    static createFrom(source: any = {}) {
@@ -81,6 +83,8 @@ export namespace main {
 	        this.name = source["name"];
 	        this.avatar = source["avatar"];
 	        this.tier = source["tier"];
+	        this.owner = source["owner"];
+	        this.effective = source["effective"];
 	        this.error = source["error"];
 	    }
 	}
@@ -442,6 +446,7 @@ export namespace main {
 	    blocked: boolean;
 	    disabled: boolean;
 	    lastRun?: string;
+	    locked: boolean;
 	
 	    static createFrom(source: any = {}) {
 	        return new TweakView(source);
@@ -470,6 +475,7 @@ export namespace main {
 	        this.blocked = source["blocked"];
 	        this.disabled = source["disabled"];
 	        this.lastRun = source["lastRun"];
+	        this.locked = source["locked"];
 	    }
 	
 		convertValues(a: any, classs: any, asMap: boolean = false): any {

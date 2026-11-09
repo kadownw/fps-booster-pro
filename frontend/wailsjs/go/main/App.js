@@ -34,10 +34,6 @@ export function DiscordLogout() {
   return window['go']['main']['App']['DiscordLogout']();
 }
 
-export function DiscordSetClientID(arg1) {
-  return window['go']['main']['App']['DiscordSetClientID'](arg1);
-}
-
 export function DiscordState() {
   return window['go']['main']['App']['DiscordState']();
 }
@@ -112,4 +108,8 @@ export function SetSimulation(arg1) {
 
 export function SetStartup(arg1, arg2) {
   return window['go']['main']['App']['SetStartup'](arg1, arg2);
+}
+
+export function SetViewAs(arg1) {
+  return window['go']['main']['App']['SetViewAs'](arg1);
 }

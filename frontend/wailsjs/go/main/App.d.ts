@@ -18,8 +18,6 @@ export function DiscordLogin():Promise<main.DiscordUser>;
 
 export function DiscordLogout():Promise<void>;
 
-export function DiscordSetClientID(arg1:string):Promise<string>;
-
 export function DiscordState():Promise<main.DiscordUser>;
 
 export function GameCover(arg1:string):Promise<string>;
@@ -57,3 +55,5 @@ export function ScanCleanup():Promise<Array<main.CleanItem>>;
 export function SetSimulation(arg1:boolean):Promise<void>;
 
 export function SetStartup(arg1:string,arg2:boolean):Promise<string>;
+
+export function SetViewAs(arg1:string):Promise<main.DiscordUser>;

@@ -319,3 +319,49 @@ func TestMaxPerfServicesAreSafeAndUnshared(t *testing.T) {
 		t.Fatal("bitlocker_off debe ser una acción única de administrador")
 	}
 }
+
+func TestTierRules(t *testing.T) {
+	if !tweakAllowed(tierFree, "game_mode") || tweakAllowed(tierFree, "svc_max_performance") || tweakAllowed(tierFree, "bitlocker_off") {
+		t.Fatal("Free Tier: solo ajustes básicos")
+	}
+	if !tweakAllowed(tierPro, "svc_max_performance") || !tweakAllowed(tierOwner, "bitlocker_off") {
+		t.Fatal("Pro y Propietario lo tienen todo")
+	}
+	if tweakAllowed("", "game_mode") {
+		t.Fatal("sin sesión no se permite nada")
+	}
+	for id := range freeTweaks {
+		tw, ok := findTweak(id)
+		if !ok {
+			t.Fatalf("freeTweaks apunta a un ajuste que no existe: %s", id)
+		}
+		if tw.Risk != "safe" {
+			t.Fatalf("%s no es seguro y no puede ser básico", id)
+		}
+	}
+}
+
+func TestEngineBlocksFreeTier(t *testing.T) {
+	e := &Engine{st: store{Items: map[string]*Backup{}}, simApplied: map[string]bool{}, runs: map[string]string{}, sim: true}
+	tier := tierFree
+	e.tier = func() string { return tier }
+	if err := e.Apply("svc_max_performance"); err != errTier {
+		t.Fatalf("Free debe recibir errTier, recibió %v", err)
+	}
+	if _, err := e.RunOnce("bitlocker_off"); err != errTier {
+		t.Fatalf("Free no puede ejecutar acciones Pro: %v", err)
+	}
+	locked := 0
+	for _, v := range e.List() {
+		if v.Locked {
+			locked++
+		}
+	}
+	if locked < 50 {
+		t.Fatalf("Free debería ver muchos ajustes bloqueados, vio %d", locked)
+	}
+	tier = tierPro
+	if err := e.Apply("svc_max_performance"); err == errTier {
+		t.Fatal("Pro no debe estar bloqueado")
+	}
+}
