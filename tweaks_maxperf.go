@@ -2,24 +2,24 @@ package main
 
 import "strings"
 
-// Servicios en Â«mÃ¡ximo rendimientoÂ»: deshabilita casi todos los servicios opcionales de Windows.
-// Se parte de la lista del script Â«17 ServicesÂ» de Ultimate (230 servicios con Start=4) y se
+// Servicios en «máximo rendimiento»: deshabilita casi todos los servicios opcionales de Windows.
+// Se parte de la lista del script «17 Services» de Ultimate (230 servicios con Start=4) y se
 // QUITAN los que, apagados, rompen cosas que un jugador usa a diario. El cambio es reversible:
-// cada valor Start se guarda antes de tocarlo y Â«DesactivarÂ» lo devuelve tal cual estaba.
+// cada valor Start se guarda antes de tocarlo y «Desactivar» lo devuelve tal cual estaba.
 //
-// Se dejan SIEMPRE encendidos (no estÃ¡n en la lista):
+// Se dejan SIEMPRE encendidos (no están en la lista):
 //   - Seguridad y base del sistema: BFE y mpssvc (firewall), EventLog, EventSystem, PlugPlay, SamSs,
 //     DPS, Themes, ShellHWDetection, StorSvc, TrkWks, vds, smphost, W32Time, CertPropSvc, EFS.
-//   - Red y conexiÃ³n: NlaSvc, iphlpsvc, LanmanWorkstation, Netlogon, WlanSvc, WwanSvc, RasMan, RasAuto,
+//   - Red y conexión: NlaSvc, iphlpsvc, LanmanWorkstation, Netlogon, WlanSvc, WwanSvc, RasMan, RasAuto,
 //     DoSvc, lmhosts, WinHttpAutoProxySvc, BITS.
 //   - Cuenta y Tienda (Game Pass, Xbox, Battle.net, etc.): TokenBroker, ClipSVC, wlidsvc, InstallService,
 //     LicenseManager, WpnService, UserDataSvc, XblAuthManager, XblGameSave, XboxGipSvc, XboxNetApiSvc,
 //     GameInputSvc, GraphicsPerfSvc, DisplayEnhancementService.
-//   - Entrada y perifÃ©ricos: hidserv, Bluetooth (bthserv, BthAvctpSvc, BTAGService, BluetoothUserService),
+//   - Entrada y periféricos: hidserv, Bluetooth (bthserv, BthAvctpSvc, BTAGService, BluetoothUserService),
 //     TabletInputService, WbioSrvc, PenService, FontCache.
-//   - RestauraciÃ³n y actualizaciones: VSS, swprv, wuauserv, UsoSvc, WaaSMedicSvc, SDRSVC.
+//   - Restauración y actualizaciones: VSS, swprv, wuauserv, UsoSvc, WaaSMedicSvc, SDRSVC.
 //
-// Tampoco se incluyen WdiServiceHost ni WdiSystemHost: su clave pertenece a TrustedInstaller y ni\n// un administrador puede escribirla.\n// Por eso este ajuste es Â«ModeradoÂ» y avisa que el cambio se nota tras reiniciar.
+// Tampoco se incluyen WdiServiceHost ni WdiSystemHost: su clave pertenece a TrustedInstaller y ni\n// un administrador puede escribirla.\n// Por eso este ajuste es «Moderado» y avisa que el cambio se nota tras reiniciar.
 
 var maxPerfServices = []string{
 	"ADPSvc", "AarSvc", "AJRouter", "ALG", "AppIDSvc", "AppMgmt", "AppReadiness", "AppVClient", "ApxSvc",
@@ -50,9 +50,9 @@ var maxPerfServices = []string{
 	"WSAIFabricSvc", "WSearch", "wuqisvc",
 }
 
-// dedupeMaxPerf quita del ajuste de mÃ¡ximo rendimiento los servicios que ya controla otro ajuste.
-// Si dos ajustes guardaran el Â«valor originalÂ» de la misma clave, revertirlos en distinto orden
-// dejarÃ­a un valor equivocado; asÃ­ cada clave tiene un solo dueÃ±o.
+// dedupeMaxPerf quita del ajuste de máximo rendimiento los servicios que ya controla otro ajuste.
+// Si dos ajustes guardaran el «valor original» de la misma clave, revertirlos en distinto orden
+// dejaría un valor equivocado; así cada clave tiene un solo dueño.
 func dedupeMaxPerf(list []Tweak) {
 	owned := map[string]bool{}
 	mi := -1
@@ -81,14 +81,14 @@ func maxPerfCatalog() []Tweak {
 	names := maxPerfServices
 	return []Tweak{
 		{
-			ID: "svc_max_performance", Title: "Deshabilitar todos los servicios opcionales (mÃ¡ximo rendimiento)", Category: "Servicios",
+			ID: "svc_max_performance", Title: "Deshabilitar todos los servicios opcionales (máximo rendimiento)", Category: "Servicios",
 			Risk: "moderate", Admin: true, Reboot: true,
-			Description: "Pone en Â«DeshabilitadoÂ» mÃ¡s de 150 servicios opcionales de Windows (impresiÃ³n, Escritorio remoto, bÃºsqueda, telemetrÃ­a, mapas, Hyper-V invitado, etc.) para liberar RAM y CPU. Se dejan encendidos firewall, red, Wi-Fi, audio, Bluetooth, Windows Update, Tienda y Xbox para que nada de lo que usÃ¡s jugando se rompa. Solo se tocan los que existen en tu Windows; al desactivarlo cada uno vuelve a su valor original. Los servicios que ya manejan los otros ajustes de esta categorÃ­a (telemetrÃ­a, Xbox, bÃºsqueda, impresiÃ³n, informe de erroresâ€¦) se activan desde esos ajustes: activalos tambiÃ©n para cubrir todo. Necesita reiniciar.",
+			Description: "Pone en «Deshabilitado» más de 150 servicios opcionales de Windows (impresión, Escritorio remoto, búsqueda, telemetría, mapas, Hyper-V invitado, etc.) para liberar RAM y CPU. Se dejan encendidos firewall, red, Wi-Fi, audio, Bluetooth, Windows Update, Tienda y Xbox para que nada de lo que usás jugando se rompa. Solo se tocan los que existen en tu Windows; al desactivarlo cada uno vuelve a su valor original. Los servicios que ya manejan los otros ajustes de esta categoría (telemetría, Xbox, búsqueda, impresión, informe de errores…) se activan desde esos ajustes: activalos también para cubrir todo. Necesita reiniciar.",
 			Changes:     svcs(startDisabled, names...),
 		},
 		{
-			ID: "bitlocker_off", Title: "Quitar BitLocker (descifrar los discos)", Category: "Acciones Ãºnicas", Admin: true, Once: true,
-			Description: "Empieza a descifrar todas las unidades con BitLocker activo. Puede tardar un buen rato en segundo plano (podÃ©s seguir usando la PC) y deja tus archivos sin cifrar: si te roban la PC, quien la tenga puede leer el disco. Para volver a cifrar tenÃ©s que activarlo a mano desde Windows.",
+			ID: "bitlocker_off", Title: "Quitar BitLocker (descifrar los discos)", Category: "Acciones únicas", Admin: true, Once: true,
+			Description: "Empieza a descifrar todas las unidades con BitLocker activo. Puede tardar un buen rato en segundo plano (podés seguir usando la PC) y deja tus archivos sin cifrar: si te roban la PC, quien la tenga puede leer el disco. Para volver a cifrar tenés que activarlo a mano desde Windows.",
 		},
 	}
 }

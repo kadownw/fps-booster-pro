@@ -60,6 +60,30 @@ export namespace main {
 	        this.error = source["error"];
 	    }
 	}
+	export class DiscordUser {
+	    loggedIn: boolean;
+	    configured: boolean;
+	    id: string;
+	    name: string;
+	    avatar: string;
+	    tier: string;
+	    error: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new DiscordUser(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.loggedIn = source["loggedIn"];
+	        this.configured = source["configured"];
+	        this.id = source["id"];
+	        this.name = source["name"];
+	        this.avatar = source["avatar"];
+	        this.tier = source["tier"];
+	        this.error = source["error"];
+	    }
+	}
 	export class DiskInfo {
 	    letter: string;
 	    totalGB: number;
@@ -108,6 +132,38 @@ export namespace main {
 	        this.driver = source["driver"];
 	    }
 	}
+	export class GameEntry {
+	    game: string;
+	    exe: string;
+	    path: string;
+	    lastPlayed: string;
+	    sessions: number;
+	    totalSec: number;
+	    avgFps: number;
+	    low1Fps: number;
+	    low01Fps: number;
+	    measured: boolean;
+	    sessionAt: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new GameEntry(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.game = source["game"];
+	        this.exe = source["exe"];
+	        this.path = source["path"];
+	        this.lastPlayed = source["lastPlayed"];
+	        this.sessions = source["sessions"];
+	        this.totalSec = source["totalSec"];
+	        this.avgFps = source["avgFps"];
+	        this.low1Fps = source["low1Fps"];
+	        this.low01Fps = source["low01Fps"];
+	        this.measured = source["measured"];
+	        this.sessionAt = source["sessionAt"];
+	    }
+	}
 	export class GameSession {
 	    game: string;
 	    exe: string;
@@ -120,6 +176,10 @@ export namespace main {
 	    avgGpuTemp: number;
 	    maxGpuTemp: number;
 	    samples: number;
+	    path: string;
+	    avgFps: number;
+	    low1Fps: number;
+	    low01Fps: number;
 	
 	    static createFrom(source: any = {}) {
 	        return new GameSession(source);
@@ -138,6 +198,10 @@ export namespace main {
 	        this.avgGpuTemp = source["avgGpuTemp"];
 	        this.maxGpuTemp = source["maxGpuTemp"];
 	        this.samples = source["samples"];
+	        this.path = source["path"];
+	        this.avgFps = source["avgFps"];
+	        this.low1Fps = source["low1Fps"];
+	        this.low01Fps = source["low01Fps"];
 	    }
 	}
 	export class Live {
@@ -244,6 +308,7 @@ export namespace main {
 	    label: string;
 	    enabled: boolean;
 	    admin: boolean;
+	    exe: string;
 	
 	    static createFrom(source: any = {}) {
 	        return new StartupEntry(source);
@@ -258,6 +323,7 @@ export namespace main {
 	        this.label = source["label"];
 	        this.enabled = source["enabled"];
 	        this.admin = source["admin"];
+	        this.exe = source["exe"];
 	    }
 	}
 	export class SysInfo {

@@ -50,6 +50,7 @@ func (a *App) startup(ctx context.Context) {
 
 func (a *App) shutdown(ctx context.Context) {
 	releaseTimer()
+	fpsCap.Stop()
 	if a.stopMon != nil {
 		close(a.stopMon)
 	}
@@ -187,6 +188,25 @@ func (a *App) RunCleanup(ids []string) CleanOutcome {
 }
 
 func (a *App) ListStartup() []StartupEntry { return ListStartup() }
+
+func (a *App) DiscordState() DiscordUser           { return DiscordState() }
+func (a *App) DiscordLogin() DiscordUser           { return DiscordLogin() }
+func (a *App) DiscordLogout()                      { DiscordLogout() }
+func (a *App) DiscordSetClientID(id string) string { return DiscordSetClientID(id) }
+
+// AppIcons: ruta del programa -> icono (data URL PNG).
+func (a *App) AppIcons(paths []string) map[string]string { return AppIcons(paths) }
+
+// GameCover: portada del juego (data URL) o "" si no hay.
+func (a *App) GameCover(exePath string) string { return GameCover(exePath) }
+
+// GameLibrary: un juego por ejecutable, con los datos de su última sesión.
+func (a *App) GameLibrary() []GameEntry {
+	if a.games == nil {
+		return nil
+	}
+	return gameLibrary(a.games.Sessions())
+}
 
 func (a *App) SetStartup(id string, enabled bool) string {
 	if err := SetStartup(id, enabled); err != nil {

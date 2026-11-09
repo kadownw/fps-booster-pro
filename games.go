@@ -61,7 +61,10 @@ func gameName(path string) string {
 	return strings.TrimSuffix(base, filepath.Ext(base))
 }
 
-type runningGame struct{ Name, Exe, Path string }
+type runningGame struct {
+	Name, Exe, Path string
+	Pid             uint32
+}
 
 func scanRunningGame() *runningGame {
 	snap, err := windows.CreateToolhelp32Snapshot(windows.TH32CS_SNAPPROCESS, 0)
@@ -83,7 +86,7 @@ func scanRunningGame() *runningGame {
 					path := windows.UTF16ToString(buf[:n])
 					if isGamePath(path) {
 						windows.CloseHandle(h)
-						return &runningGame{Name: gameName(path), Exe: filepath.Base(path), Path: path}
+						return &runningGame{Name: gameName(path), Exe: filepath.Base(path), Path: path, Pid: pe.ProcessID}
 					}
 				}
 				windows.CloseHandle(h)
@@ -110,6 +113,10 @@ type GameSession struct {
 	AvgGPUTemp  float64 `json:"avgGpuTemp"`
 	MaxGPUTemp  int     `json:"maxGpuTemp"`
 	Samples     int     `json:"samples"`
+	Path        string  `json:"path"`
+	AvgFPS      float64 `json:"avgFps"`   // FPS medio de la sesión (0 = no medido)
+	Low1FPS     float64 `json:"low1Fps"`  // 1 % low
+	Low01FPS    float64 `json:"low01Fps"` // 0,1 % low
 }
 
 type active struct {
@@ -144,7 +151,7 @@ func (a *active) add(l Live) {
 
 func (a *active) snapshot(now time.Time) GameSession {
 	s := GameSession{Game: a.game.Name, Exe: a.game.Exe, Start: a.start.Format(time.RFC3339),
-		DurationSec: int(now.Sub(a.start).Seconds()), Samples: a.n, MaxCPU: a.maxCPU, MaxGPUTemp: a.maxTmp}
+		DurationSec: int(now.Sub(a.start).Seconds()), Samples: a.n, Path: a.game.Path, MaxCPU: a.maxCPU, MaxGPUTemp: a.maxTmp}
 	if a.n > 0 {
 		s.AvgCPU, s.AvgRAM = a.cpu/float64(a.n), a.ram/float64(a.n)
 	}
@@ -155,14 +162,15 @@ func (a *active) snapshot(now time.Time) GameSession {
 }
 
 type GameMonitor struct {
-	mu       sync.Mutex
-	path     string
-	sessions []GameSession
-	cur      *active
-	missing  int
-	lastLive func() (Live, bool)
-	scan     func() *runningGame
-	now      func() time.Time
+	mu        sync.Mutex
+	path      string
+	sessions  []GameSession
+	cur       *active
+	missing   int
+	capturing bool
+	lastLive  func() (Live, bool)
+	scan      func() *runningGame
+	now       func() time.Time
 }
 
 const (
@@ -201,6 +209,11 @@ func (m *GameMonitor) tick() {
 		if m.cur == nil || m.cur.game.Exe != g.Exe {
 			m.finish(now)
 			m.cur = &active{game: *g, start: now}
+			if g.Pid != 0 {
+				m.capturing = fpsCap.Start(g.Pid) == nil
+			}
+		} else if m.capturing {
+			fpsCap.SetPID(g.Pid)
 		}
 		if l, ok := m.lastLive(); ok {
 			m.cur.add(l)
@@ -220,6 +233,11 @@ func (m *GameMonitor) finish(now time.Time) {
 		return
 	}
 	s := m.cur.snapshot(now)
+	if m.capturing {
+		r := fpsCap.Stop()
+		s.AvgFPS, s.Low1FPS, s.Low01FPS = r.Avg, r.Low1, r.Low01
+		m.capturing = false
+	}
 	m.cur, m.missing = nil, 0
 	if time.Duration(s.DurationSec)*time.Second < minSession {
 		return
@@ -265,4 +283,44 @@ func (m *GameMonitor) Clear() {
 	defer m.mu.Unlock()
 	m.sessions = nil
 	m.save()
+}
+
+// GameEntry: un juego de la biblioteca (uno por ejecutable) con los FPS de su última sesión medida.
+type GameEntry struct {
+	Game      string  `json:"game"`
+	Exe       string  `json:"exe"`
+	Path      string  `json:"path"`
+	LastPlay  string  `json:"lastPlayed"`
+	Sessions  int     `json:"sessions"`
+	TotalSec  int     `json:"totalSec"`
+	AvgFPS    float64 `json:"avgFps"`
+	Low1FPS   float64 `json:"low1Fps"`
+	Low01FPS  float64 `json:"low01Fps"`
+	Measured  bool    `json:"measured"`
+	SessionAt string  `json:"sessionAt"` // fecha de la sesión de la que salen los FPS
+}
+
+// gameLibrary agrupa las sesiones (más nueva primero) por ejecutable.
+func gameLibrary(sessions []GameSession) []GameEntry {
+	idx := map[string]int{}
+	var out []GameEntry
+	for _, s := range sessions {
+		k := strings.ToLower(s.Exe)
+		i, ok := idx[k]
+		if !ok {
+			idx[k] = len(out)
+			out = append(out, GameEntry{Game: s.Game, Exe: s.Exe, Path: s.Path, LastPlay: s.Start})
+			i = len(out) - 1
+		}
+		e := &out[i]
+		e.Sessions++
+		e.TotalSec += s.DurationSec
+		if e.Path == "" {
+			e.Path = s.Path
+		}
+		if !e.Measured && s.AvgFPS > 0 { // la primera medida que aparece es la más reciente
+			e.Measured, e.AvgFPS, e.Low1FPS, e.Low01FPS, e.SessionAt = true, s.AvgFPS, s.Low1FPS, s.Low01FPS, s.Start
+		}
+	}
+	return out
 }

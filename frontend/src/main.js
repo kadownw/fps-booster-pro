@@ -2,9 +2,10 @@ import './style.css';
 import {
   GetSystemInfo, GetLive, ListTweaks, ApplyTweak, RevertTweak, RevertAll,
   SetSimulation, GetSimulation, RelaunchAsAdmin, InitError,
-  ListProfiles, ApplyProfile, CreateRestorePoint,
+  CreateRestorePoint,
   ScanCleanup, RunCleanup, ListStartup, SetStartup,
-  CurrentGame, ListSessions, ClearSessions, RunOnce,
+  CurrentGame, RunOnce, GameLibrary, GameCover, AppIcons,
+  DiscordState, DiscordLogin, DiscordLogout, DiscordSetClientID,
 } from '../wailsjs/go/main/App';
 import { h, svg, icon, fmtBytes, fmtDuration, zone, worst, GLOW, colorAt, CAT_ICON } from './lib.js';
 import { tickGauge } from './gauge.js';
@@ -13,7 +14,7 @@ import { lineChart, barChart } from './chart.js';
 // ---------- estado ----------
 const HIST_MAX = 150;                       // 150 muestras x 2 s = 5 minutos
 const S = {
-  info: null, tweaks: [], profiles: [], cat: 'Todos', q: '', sim: false, busy: false, page: 'home',
+  info: null, tweaks: [], cat: 'Todos', q: '', sim: false, busy: false, page: 'home',
   rows: new Map(), clean: null, startup: null, live: null, game: null,
   hist: { cpu: [], ram: [], gpu: [], disk: [] }, range: 30, visible: { cpu: true, ram: true, gpu: true, disk: false },
 };
@@ -322,45 +323,6 @@ async function run(fn, id, okMsg) {
   }
 }
 
-// ---------- perfiles + punto de restauración ----------
-async function applyProfile(p) {
-  if (S.busy) return;
-  const canRestore = S.info.admin;
-  const list = p.tweaks.map((id) => S.tweaks.find((t) => t.id === id)).filter((t) => t && !t.disabled);
-  const pending = list.filter((t) => !t.active);
-  const body = [
-    h('p', {}, p.description),
-    h('p', { class: 'k', style: 'margin:10px 0 4px' }, `${pending.length} ajustes por aplicar, ${list.length - pending.length} ya activos`),
-    h('ul', { class: 'mini' }, pending.slice(0, 8).map((t) => h('li', {}, t.title)), pending.length > 8 && h('li', { class: 'k' }, `y ${pending.length - 8} más…`)),
-    !canRestore && p.needsAdmin && h('p', { class: 'warn' }, 'Sin administrador, los ajustes que lo requieren se omitirán.'),
-  ];
-  const r = await dialog(`Aplicar perfil «${p.title}»`, body, { ok: 'Aplicar', check: canRestore ? { label: 'Crear un punto de restauración antes', checked: true } : null });
-  if (!r.ok) return;
-  S.busy = true; paintState();
-  try {
-    if (r.checked) {
-      const err = await CreateRestorePoint();
-      if (err) {
-        S.busy = false; paintState();
-        const go = await dialog('No se pudo crear el punto de restauración', [h('p', {}, err), h('p', {}, 'Podés continuar igual: cada ajuste guarda su valor original y se puede revertir desde la app.')], { ok: 'Continuar', cancel: 'Cancelar' });
-        if (!go.ok) return;
-        S.busy = true; paintState();
-      }
-    }
-    const res = await ApplyProfile(p.id);
-    if (res.error) { toast(res.error, 'err'); return; }
-    const sec = (title, arr) => arr && arr.length ? [h('p', { class: 'k', style: 'margin:12px 0 4px' }, `${title} (${arr.length})`), h('ul', { class: 'mini' }, arr.map((x) => h('li', {}, x)))] : null;
-    S.busy = false;
-    await dialog(`Perfil «${p.title}»`, [sec('Aplicados', res.applied), sec('Omitidos', res.skipped), sec('Con error', res.failed),
-      !res.applied?.length && !res.failed?.length && h('p', {}, 'No había nada nuevo para aplicar.')], { ok: 'Listo', cancel: null });
-  } catch (e) {
-    toast(String(e), 'err');
-  } finally {
-    S.busy = false;
-    await refresh();
-  }
-}
-
 async function makeRestorePoint() {
   if (!S.info.admin) { toast('Necesitás ejecutar como administrador.', 'err'); return; }
   S.busy = true; paintState();
@@ -381,8 +343,7 @@ function hwCard({ ico, title, sub, to, gauge, stats }) {
       h('div', { class: 'hw-ico' }, icon(ico)),
       h('div', { class: 'hw-t' }, title),
       h('div', { class: 'hw-s', title: sub }, sub),
-      h('div', { class: 'hw-stats' }, stats),
-      h('button', { class: 'ghost', onclick: () => go(to) }, 'Ver más')),
+      h('div', { class: 'hw-stats' }, stats)),
     h('div', { class: 'hw-g' }, gauge.el));
 }
 
@@ -436,37 +397,28 @@ function pageHome() {
     hChip.className = 'hchip ' + st;
     hIssues.replaceChildren(...(hl.issues.length ? hl.issues.map((x) => h('li', {}, x)) : [h('li', { class: 'ok' }, 'Todo en orden')]));
   };
-  paintLiveFns = [repaint];
-  setTimeout(repaint, 0);
+  const panel = pcPanel();
+  paintLiveFns = [repaint, panel.repaint];
+  setTimeout(() => { repaint(); panel.repaint(); }, 0);
 
   const tile = (ico, title, sub, onclick) => h('button', { class: 'tile', onclick },
     h('div', { class: 'tile-ico' }, icon(ico)), h('div', { class: 'tile-t' }, h('b', {}, title), h('span', {}, sub)), icon('chevron', 'tile-go'));
-  const gaming = () => S.profiles.find((p) => p.id === 'gaming');
-
-  const profileCards = S.profiles.map((p) => h('div', { class: 'glass pcard' },
-    h('div', { class: 'ptop' }, h('h3', {}, p.title), p.needsAdmin && h('span', { class: 'tag adm' }, 'Admin')),
-    h('p', { class: 'd' }, p.description),
-    h('div', { class: 'row-end' }, h('span', { class: 'k' }, `${p.tweaks.length} ajustes`),
-      h('button', { class: 'primary', 'data-needbusy': 1, onclick: () => applyProfile(p) }, 'Aplicar'))));
 
   return [
     h('div', { class: 'top' },
-      h('div', {}, h('h1', {}, `Bienvenido${i.user ? ', ' + i.user : ''}`), h('p', {}, '¿Cómo anda tu PC hoy?')),
-      h('div', { class: 'row' }, h('button', { onclick: () => go('pc') }, 'Ver mi PC'), h('button', { class: 'primary', onclick: () => gaming() && applyProfile(gaming()) }, 'Optimizar con un clic'))),
+      h('div', {}, h('h1', {}, `Bienvenido${S.discord && S.discord.loggedIn ? ', ' + S.discord.name : (i.user ? ', ' + i.user : '')}`), h('p', {}, '¿Cómo anda tu PC hoy?'))),
     h('div', { class: 'dash' },
       h('div', { class: 'glass health' },
         h('div', { class: 'k' }, 'Salud'), hChip,
         h('div', { class: 'hbar' }, hFill), hVal, hIssues),
       h('div', { class: 'hwgrid' }, cards)),
     h('div', { class: 'tiles' },
-      tile('chart', 'Analizar mi PC', 'Uso en tiempo real', () => go('pc')),
-      tile('bolt', 'Optimizar con un clic', 'Perfil Gaming', () => gaming() && applyProfile(gaming())),
+      tile('sliders', 'Optimizar', 'Elegí y aplicá ajustes', () => go('settings')),
       tile('trash', 'Limpiar archivos', 'Liberá espacio', () => go('clean')),
       tile('gamepad', 'Mis juegos', 'Detector y sesiones', () => go('games')),
       tile('rocket', 'Programas de inicio', 'Arranque más rápido', () => go('startup')),
       tile('restore', 'Punto de restauración', 'Antes de cambiar nada', makeRestorePoint)),
-    h('div', { class: 'section' }, h('h2', {}, 'Perfiles de optimización')),
-    h('div', { class: 'pgrid' }, profileCards),
+    ...panel.nodes,
     h('div', { class: 'section' }, h('h2', {}, 'Seguridad')),
     h('div', { class: 'glass safety' },
       h('div', {}, h('b', {}, 'Todo es reversible'),
@@ -476,7 +428,8 @@ function pageHome() {
   ];
 }
 
-function pagePC() {
+// Detalle en tiempo real (gráfico + tarjetas). Va dentro de Inicio.
+function pcPanel() {
   const i = S.info;
   const series = [
     { key: 'cpu', label: 'CPU', color: '#2fe3a2' }, { key: 'gpu', label: 'GPU', color: '#6c8cff' },
@@ -486,9 +439,6 @@ function pagePC() {
   const legend = h('div', { class: 'legend' });
   const rangeBtns = h('div', { class: 'seg' });
   const detail = h('div', { class: 'detail-grid' });
-  const gCPU = tickGauge({ size: 150 });
-  const gGPU = tickGauge({ size: 150 });
-  const cpuSub = h('div', { class: 'gsub' }), gpuSub = h('div', { class: 'gsub' });
 
   const drawChart = () => {
     const data = {};
@@ -509,12 +459,7 @@ function pagePC() {
     const l = S.live; if (!l) return;
     const g = l.gpu;
     drawChart(); drawLegend();
-    gCPU.set({ frac: l.cpu / 100, state: zone(l.cpu, ZONES.cpu), text: Math.round(l.cpu), unitText: '%', labelText: 'Uso de CPU' });
-    if (g && g.temp >= 0) gGPU.set({ frac: g.temp / 100, state: zone(g.temp, ZONES.temp), text: g.temp, unitText: '°C', labelText: 'Temp. GPU' });
-    else gGPU.set({ frac: null, text: '–', labelText: 'Sin datos' });
     const ci = i.cpuInfo || {};
-    cpuSub.textContent = l.cpuMHz ? `${(l.cpuMHz / 1000).toFixed(2)} GHz · ${ci.cores || i.cores} núcleos` : '';
-    gpuSub.textContent = g ? `Uso ${g.util}% · ${(g.vramUsed / 1024).toFixed(1)} GB VRAM` : 'Solo NVIDIA';
     detail.replaceChildren(
       h('div', { class: 'glass dcard' }, h('div', { class: 'dhead' }, icon('cpu'), h('b', {}, 'Procesador')), h('div', { class: 'dsub' }, i.cpu),
         row('Núcleos / hilos', `${ci.cores || '–'} / ${ci.threads || i.cores}`),
@@ -536,67 +481,62 @@ function pagePC() {
           h('div', { class: 'kv' }, h('span', {}, d.letter), h('b', {}, `${d.freeGB.toFixed(0)} GB libres de ${d.totalGB.toFixed(0)} GB`)),
           h('div', { class: 'meter' }, h('i', { style: `width:${d.usedPct}%;background:linear-gradient(90deg,${colorAt(zone(d.usedPct, ZONES.disk), 0)},${colorAt(zone(d.usedPct, ZONES.disk), 1)})` }))))));
   };
-  paintLiveFns = [repaint];
-  setTimeout(repaint, 0);
+  return {
+    repaint,
+    nodes: [
+      h('div', { class: 'section' }, h('h2', {}, 'Tu equipo en tiempo real')),
+      h('div', { class: 'glass chartcard' }, h('div', { class: 'chead' }, h('b', {}, 'Uso en tiempo real'), rangeBtns), chart.el, legend),
+      h('div', { style: 'height:12px' }),
+      detail,
+    ],
+  };
+}
 
-  return [
-    pageHead('Mi PC', 'Detalle en tiempo real de tu equipo.'),
-    h('div', { class: 'pc-top' },
-      h('div', { class: 'glass g2' }, h('div', { class: 'k' }, 'CPU'), gCPU.el, cpuSub),
-      h('div', { class: 'glass g2' }, h('div', { class: 'k' }, 'GPU'), gGPU.el, gpuSub),
-      h('div', { class: 'glass chartcard' },
-        h('div', { class: 'chead' }, h('b', {}, 'Uso en tiempo real'), rangeBtns), chart.el, legend)),
-    detail,
-  ];
+// Mis juegos: una portada por cada juego que jugaste. Al pasar el mouse se ven los FPS de la última sesión.
+const hue = (s) => { let x = 0; for (const c of s) x = (x * 31 + c.charCodeAt(0)) % 360; return x; };
+const fpsNum = (v) => (v > 0 ? Math.round(v) : '–');
+
+function gameCard(g, playing) {
+  const cover = h('div', { class: 'cv-art', style: `--h:${hue(g.exe)}` }, h('span', { class: 'cv-init' }, (g.game || '?').slice(0, 1).toUpperCase()));
+  GameCover(g.path || '').then((src) => {
+    if (src) { cover.replaceChildren(h('img', { src, alt: g.game, draggable: 'false' })); cover.classList.add('has-img'); return; }
+    return AppIcons([g.path]).then((m) => { if (m && m[g.path]) cover.prepend(h('img', { class: 'cv-exe', src: m[g.path], alt: '' })); });
+  }).catch(() => {});
+  const stat2 = (label, v) => h('div', { class: 'cv-stat' }, h('span', {}, label), h('b', {}, fpsNum(v)));
+  const over = g.measured
+    ? h('div', { class: 'cv-over' },
+      h('div', { class: 'cv-t' }, g.game),
+      h('div', { class: 'cv-k' }, 'Media de FPS en la sesión'), h('div', { class: 'cv-big' }, fpsNum(g.avgFps)),
+      h('div', { class: 'cv-row' }, stat2('0.1% low', g.low01Fps), stat2('1% low', g.low1Fps)),
+      h('div', { class: 'cv-sub' }, fmtWhen(g.sessionAt)))
+    : h('div', { class: 'cv-over' },
+      h('div', { class: 'cv-t' }, g.game),
+      h('div', { class: 'cv-k' }, 'Media de FPS en la sesión'), h('div', { class: 'cv-big' }, '–'),
+      h('div', { class: 'cv-sub' }, S.info && S.info.admin ? 'Esta sesión no tuvo datos de FPS (el juego usa Vulkan/OpenGL o duró muy poco).' : 'Abrí South Tweaks como administrador para medir los FPS.'));
+  return h('div', { class: 'cv' + (playing ? ' live' : '') }, cover, playing && h('span', { class: 'cv-live' }, 'Jugando'), h('div', { class: 'cv-name' }, g.game), over);
 }
 
 function pageGames() {
-  const cur = h('div', { class: 'glass gcur' });
-  const hist = h('div');
-  const metrics = {
-    avgCpu: { label: 'CPU promedio', unit: '%', max: 100 }, avgGpu: { label: 'GPU promedio', unit: '%', max: 100 },
-    maxGpuTemp: { label: 'Temp. máx. GPU', unit: '°C', max: 100 }, avgRam: { label: 'RAM promedio', unit: '%', max: 100 },
-  };
-  let metric = 'avgGpu', sessions = [];
-
-  const drawCur = () => {
-    const g = S.game;
-    if (!g) {
-      cur.replaceChildren(h('div', { class: 'gcur-empty' }, icon('gamepad', 'big'),
-        h('div', {}, h('b', {}, 'Ningún juego detectado'),
-          h('p', { class: 'd' }, 'Abrí un juego y lo reconozco solo (Steam, Epic, Riot, Xbox, GOG, Ubisoft, EA, Rockstar, Roblox). Mientras jugás, registro el uso de CPU, RAM y GPU.'))));
+  const grid = h('div', { class: 'cover-grid' });
+  const draw = (games) => {
+    if (!games.length) {
+      grid.replaceChildren(h('div', { class: 'glass empty' }, 'Todavía no hay juegos. Abrí uno (Steam, Epic, Riot, Xbox, GOG, Ubisoft, EA, Rockstar, Roblox) y su portada aparece acá al cerrarlo.'));
       return;
     }
-    cur.replaceChildren(h('div', { class: 'gcur-live' },
-      h('div', {}, h('div', { class: 'k' }, 'Jugando ahora'), h('h2', {}, g.game), h('p', { class: 'd' }, g.exe)),
-      h('div', { class: 'gstats' },
-        stat('Duración', fmtDuration(g.durationSec)), stat('CPU prom.', `${g.avgCpu.toFixed(0)}%`), stat('GPU prom.', g.samples ? `${g.avgGpu.toFixed(0)}%` : '–'),
-        stat('Temp. GPU máx.', g.maxGpuTemp ? `${g.maxGpuTemp} °C` : '–'), stat('RAM prom.', `${g.avgRam.toFixed(0)}%`))));
+    grid.replaceChildren(...games.map((g) => gameCard(g, S.game && S.game.exe && S.game.exe.toLowerCase() === g.exe.toLowerCase())));
   };
-  const fmtDate = (iso) => new Date(iso).toLocaleString('es-AR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' });
-  const drawHist = () => {
-    if (!sessions.length) { hist.replaceChildren(h('div', { class: 'glass empty' }, 'Todavía no hay sesiones. Se guardan al cerrar un juego que estuvo abierto más de 30 segundos.')); return; }
-    const m = metrics[metric];
-    const recent = sessions.slice(0, 12).reverse();
-    hist.replaceChildren(
-      h('div', { class: 'glass' },
-        h('div', { class: 'chead' }, h('b', {}, 'Comparar sesiones'),
-          h('div', { class: 'seg' }, Object.entries(metrics).map(([k, v]) => h('button', { class: metric === k ? 'on' : '', onclick: () => { metric = k; drawHist(); } }, v.label)))),
-        barChart({ items: recent.map((s) => ({ value: s[metric], label: s.game.length > 11 ? s.game.slice(0, 10) + '…' : s.game, title: `${s.game} · ${fmtDate(s.start)}` })), max: m.max, unit: m.unit })),
-      h('div', { class: 'section' }, h('h2', {}, 'Historial')),
-      sessions.map((s) => h('div', { class: 'tweak' },
-        h('div', { class: 'info' }, h('div', { class: 't' }, s.game), h('div', { class: 'd' }, `${fmtDate(s.start)} · ${fmtDuration(s.durationSec)}`)),
-        h('div', { class: 'srow' }, stat('CPU', `${s.avgCpu.toFixed(0)}%`), stat('GPU', s.avgGpu ? `${s.avgGpu.toFixed(0)}%` : '–'),
-          stat('Temp. máx.', s.maxGpuTemp ? `${s.maxGpuTemp} °C` : '–'), stat('RAM', `${s.avgRam.toFixed(0)}%`)))),
-      h('div', { class: 'row-end', style: 'margin-top:10px' }, h('span', { class: 'dim' }, 'Los FPS todavía no se miden: requiere PresentMon.'),
-        h('button', { class: 'danger', onclick: async () => { if ((await dialog('Borrar historial', 'Se borran todas las sesiones guardadas.', { ok: 'Borrar', danger: true })).ok) { await ClearSessions(); sessions = []; drawHist(); } } }, 'Borrar historial')));
+  const load = async () => {
+    S.game = await CurrentGame();
+    const lib = (await GameLibrary()) || [];
+    if (S.game && !lib.some((g) => g.exe.toLowerCase() === S.game.exe.toLowerCase())) {
+      lib.unshift({ game: S.game.game, exe: S.game.exe, path: S.game.path, measured: false });
+    }
+    if (el.content.contains(grid)) draw(lib);
   };
-  const load = async () => { S.game = await CurrentGame(); sessions = (await ListSessions()) || []; if (el.content.contains(cur)) { drawCur(); drawHist(); } };
-  drawCur(); drawHist(); load();
-  paintLiveFns = [() => { CurrentGame().then((g) => { S.game = g; if (el.content.contains(cur)) drawCur(); }); }];
-  return [pageHead('Mis juegos', 'Detecto tus juegos y comparo cómo rinde tu PC en cada sesión.'), cur, h('div', { style: 'height:14px' }), hist];
+  grid.replaceChildren(h('div', { class: 'glass empty' }, h('div', { class: 'spin' }), ' Buscando tus juegos…'));
+  load();
+  return [pageHead('Mis juegos', 'Pasá el mouse por un juego para ver sus FPS de la última sesión.'), grid];
 }
-
 function pageSettings() {
   el.search = h('input', { class: 'search', placeholder: 'Buscar ajustes…', value: S.q, oninput: (e) => { S.q = e.target.value; paintSettingsList(); } });
   el.chips = h('div', { class: 'chips' });
@@ -676,19 +616,24 @@ function pageStartup() {
         if (err) { toast(err, 'err'); e.target.checked = !want; return; }
         it.enabled = want; toast(want ? 'Se iniciará con Windows' : 'Ya no se inicia con Windows', 'ok');
       } });
+      const ico = h('div', { class: 'app-ico', 'data-exe': it.exe || '' }, (it.name || '?').slice(0, 1).toUpperCase());
+      it._ico = ico;
       return h('div', { class: 'tweak' + (blocked ? ' off' : ''), title: blocked ? 'Requiere administrador' : '' },
+        ico,
         h('div', { class: 'info' }, h('div', { class: 't' }, it.name, h('span', { class: 'tag' }, it.label)), h('div', { class: 'd mono' }, it.command)),
         h('label', { class: 'switch' }, input, h('span')));
     }));
+    const exes = [...new Set(items.map((x) => x.exe).filter(Boolean))];
+    if (exes.length) AppIcons(exes).then((m) => {
+      for (const it of items) if (it._ico && m && m[it.exe]) it._ico.replaceChildren(h('img', { src: m[it.exe], alt: '', draggable: 'false' }));
+    }).catch(() => {});
   };
   render();
   ListStartup().then((l) => { S.startup = l || []; if (el.content.contains(wrap)) render(); });
   return [pageHead('Inicio de Windows', 'Desactivá programas que arrancan con Windows. No se borra nada: podés volver a activarlos.'), wrap];
 }
-
 const PAGES = [
   { id: 'home', label: 'Inicio', icon: 'home', render: pageHome },
-  { id: 'pc', label: 'Mi PC', icon: 'monitor', render: pagePC },
   { id: 'games', label: 'Mis juegos', icon: 'gamepad', render: pageGames },
   { id: 'settings', label: 'Optimizar', icon: 'sliders', render: pageSettings },
   { id: 'clean', label: 'Limpieza', icon: 'trash', render: pageClean },
@@ -707,9 +652,67 @@ function go(id) {
   paintState();
 }
 
+// ---------- usuario / Discord ----------
+const TIER_CLASS = { 'Propietario': 'owner', 'Pro Tier': 'pro', 'Free Tier': 'free' };
+const REDIRECT = 'http://127.0.0.1:53682/callback';
+
+async function configureDiscord() {
+  const input = h('input', { class: 'search', style: 'width:100%;margin-top:10px', placeholder: 'Application ID (solo números)', value: '' });
+  const r = await dialog('Conectar con Discord', [
+    h('p', {}, 'Para iniciar sesión con Discord necesitás una aplicación propia (gratis):'),
+    h('ol', { class: 'mini steps' },
+      h('li', {}, 'Entrá a discord.com/developers/applications y creá una aplicación.'),
+      h('li', {}, 'En «OAuth2 → Redirects» agregá exactamente:', h('code', { class: 'copy' }, REDIRECT)),
+      h('li', {}, 'Copiá el «Application ID» de «General Information» y pegalo acá.')),
+    input,
+    h('p', { class: 'dim', style: 'margin-top:8px' }, 'Solo se pide el permiso «identify» (nombre, id y foto). No se guarda ningún token.')], { ok: 'Guardar y continuar' });
+  if (!r.ok) return false;
+  const err = await DiscordSetClientID(input.value);
+  if (err) { toast(err, 'err'); return false; }
+  S.discord = { ...(S.discord || {}), configured: true };
+  return true;
+}
+
+async function discordLogin() {
+  if (!(S.discord && S.discord.configured) && !(await configureDiscord())) return;
+  toast('Se abrió tu navegador: autorizá el acceso en Discord.');
+  S.discordBusy = true; paintUser();
+  try {
+    const r = await DiscordLogin();
+    if (r.error) toast(r.error, 'err'); else { S.discord = r; toast(`Hola, ${r.name} · ${r.tier}`, 'ok'); }
+  } catch (e) { toast(String(e), 'err'); }
+  S.discordBusy = false; paintUser();
+  if (S.page === 'home') go('home');
+}
+
+function closeUserMenu() { document.querySelectorAll('.umenu').forEach((m) => m.remove()); }
+
+function paintUser() {
+  if (!el.user) return;
+  const d = S.discord || {};
+  const logged = !!d.loggedIn;
+  const avatar = h('div', { class: 'avatar' + (logged && d.avatar ? ' img' : '') }, logged && d.avatar ? h('img', { src: d.avatar, alt: '', draggable: 'false' }) : icon('user'));
+  const name = S.discordBusy ? 'Esperando a Discord…' : (logged ? d.name : 'Iniciar sesión');
+  const sub = S.discordBusy ? 'Autorizá en el navegador' : (logged ? d.tier : 'con Discord');
+  el.user.replaceChildren(avatar,
+    h('div', { class: 'u-txt' }, h('b', {}, name), h('small', { class: logged ? 'tier ' + (TIER_CLASS[d.tier] || 'free') : '' }, sub)),
+    logged ? icon('chevron', 'u-chev') : null);
+  el.user.onclick = (e) => {
+    e.stopPropagation();
+    if (S.discordBusy) return;
+    if (!logged) { discordLogin(); return; }
+    if (document.querySelector('.umenu')) { closeUserMenu(); return; }
+    const menu = h('div', { class: 'umenu' },
+      h('button', { onclick: async () => { closeUserMenu(); await DiscordLogout(); S.discord = { ...d, loggedIn: false, name: '', avatar: '', tier: '' }; paintUser(); if (S.page === 'home') go('home'); toast('Sesión cerrada'); } }, 'Cerrar sesión'),
+      h('button', { onclick: async () => { closeUserMenu(); await configureDiscord(); } }, 'Cambiar Application ID'));
+    el.user.append(menu);
+    setTimeout(() => document.addEventListener('click', closeUserMenu, { once: true }), 0);
+  };
+}
 // ---------- layout ----------
 function build() {
   el.nav = h('nav');
+  el.user = h('div', { class: 'user' });
   el.content = h('div');
   el.busy = h('div', { class: 'busy-bar', hidden: true });
   el.adminBanner = h('div', { class: 'banner', hidden: true }, 'Algunos ajustes necesitan permisos de administrador.',
@@ -727,8 +730,7 @@ function build() {
     h('aside', {},
       h('div', { class: 'brand' }, h('div', { class: 'logo' }, 'ST'), h('div', {}, h('b', {}, 'South Tweaks'), h('small', {}, 'v2 · Go'))),
       el.nav,
-      h('div', { class: 'user' }, h('div', { class: 'avatar' }, (S.info.user || '?').slice(0, 1).toUpperCase()),
-        h('div', {}, h('b', {}, S.info.user || 'Usuario'), h('small', {}, S.info.admin ? 'Administrador' : 'Sin permisos de admin')))),
+      el.user),
     el.main);
   document.body.append(el.busy, el.queue, toasts);
 }
@@ -766,7 +768,8 @@ async function tick() {
     return;
   }
   build();
-  S.profiles = (await ListProfiles()) || [];
+  paintUser();
+  DiscordState().then((d) => { S.discord = d; paintUser(); if (S.page === 'home') go('home'); }).catch(() => {});
   await refresh();
   S.live = await GetLive();
   go('home');

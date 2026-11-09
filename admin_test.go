@@ -5,7 +5,7 @@ import (
 	"testing"
 )
 
-// Pruebas que SÃ modifican el sistema (servicios, HKLM, tareas programadas) y lo restauran.
+// Pruebas que SÍ modifican el sistema (servicios, HKLM, tareas programadas) y lo restauran.
 // Solo corren como administrador y con FBP_ADMIN_TESTS=1.
 func TestAdminRoundTrip(t *testing.T) {
 	if os.Getenv("FBP_ADMIN_TESTS") != "1" || !isAdmin() {
@@ -36,12 +36,12 @@ func TestAdminRoundTrip(t *testing.T) {
 		}
 		for _, c := range regs {
 			if st, _ := readState(c); !sameState(st, desired(c)) {
-				t.Fatalf("%s: %s no quedÃ³ aplicado", id, c.Name)
+				t.Fatalf("%s: %s no quedó aplicado", id, c.Name)
 			}
 		}
 		for p := range tasksBefore {
 			if st := existingTasks(tw)[p]; st != "Disabled" {
-				t.Fatalf("%s: la tarea %s quedÃ³ en %q", id, p, st)
+				t.Fatalf("%s: la tarea %s quedó en %q", id, p, st)
 			}
 		}
 		if err := e.Revert(id); err != nil {
@@ -49,13 +49,13 @@ func TestAdminRoundTrip(t *testing.T) {
 		}
 		for i, c := range regs {
 			if st, _ := readState(c); !sameState(st, before[i]) {
-				t.Fatalf("%s: %s no volviÃ³ al original (%+v vs %+v)", id, c.Name, st, before[i])
+				t.Fatalf("%s: %s no volvió al original (%+v vs %+v)", id, c.Name, st, before[i])
 			}
 		}
 		invalidateTasks()
 		for p, was := range tasksBefore {
 			if now := existingTasks(tw)[p]; now != was && !(was == "Running" && now == "Ready") {
-				t.Fatalf("%s: la tarea %s era %q y quedÃ³ %q", id, p, was, now)
+				t.Fatalf("%s: la tarea %s era %q y quedó %q", id, p, was, now)
 			}
 		}
 		t.Logf("%s: aplicado y revertido OK (%d valores, %d tareas)", id, len(regs), len(tasksBefore))

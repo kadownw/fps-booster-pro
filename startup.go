@@ -39,6 +39,7 @@ type StartupEntry struct {
 	Label   string `json:"label"`
 	Enabled bool   `json:"enabled"`
 	Admin   bool   `json:"admin"`
+	Exe     string `json:"exe"` // ruta del programa (para mostrar su icono)
 }
 
 func findSource(scope string) (startupSource, bool) {
@@ -77,7 +78,7 @@ func ListStartup() []StartupEntry {
 				continue
 			}
 			out = append(out, StartupEntry{ID: s.Scope + "|" + n, Name: n, Command: cmd, Scope: s.Scope,
-				Label: s.Label, Enabled: approvedEnabled(s, n), Admin: s.Admin})
+				Label: s.Label, Enabled: approvedEnabled(s, n), Admin: s.Admin, Exe: exeFromCommand(cmd)})
 		}
 		k.Close()
 	}
