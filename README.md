@@ -5,6 +5,7 @@ Ajustes **reversibles** de Windows para juegos, en un único `.exe` (Go + Wails)
 - Detecta CPU, GPU (con VRAM), RAM y Windows, y muestra el uso en vivo.
 - 52 ajustes en 9 categorías (Energía, Juegos, Entrada, Visual, Sistema, GPU, Red, Privacidad y Servicios): registro, plan de energía, servicios, tareas programadas y loggers de diagnóstico.
 - Antes de tocar nada guarda el valor original; verifica cada cambio y hace rollback si falla.
+- Páginas: **Inicio** (perfiles de un clic: Gaming, Rápido sin admin, Privacidad; punto de restauración opcional), **Ajustes**, **Limpieza** (muestra el tamaño antes de borrar; solo carpetas temporales conocidas) e **Inicio de Windows** (activar o desactivar programas de arranque).
 - Botón **Revertir todo** y **modo simulación** (no modifica nada).
 - No cierra procesos ni promete FPS: cada ajuste indica su riesgo y si necesita administrador o reinicio.
 - Los datos de backup y el registro de cambios quedan en `%LOCALAPPDATA%\FPSBoosterPro\`.
@@ -30,6 +31,9 @@ go test ./...          # prueba aplicar/revertir contra HKCU real y la simulaci�
 | `tweaks.go` | Catálogo de ajustes (registro / powercfg) |
 | `engine.go` | Aplicar, verificar, backup, rollback y revertir |
 | `regops.go` | Lectura/escritura de registro y powercfg (solo HKCU/HKLM, GUID validado) |
+| `profiles.go` | Perfiles de un clic y punto de restauración |
+| `cleanup.go` | Limpieza de temporales (lista fija, sin seguir enlaces, respeta archivos recientes) |
+| `startup.go` | Programas de inicio (StartupApproved, reversible) |
 | `tasks.go` | Tareas programadas (consulta y cambio con PowerShell, rutas validadas) |
 | `tweaks_extra.go`, `tweaks_services.go` | Más ajustes: privacidad, servicios, loggers |
 | `sysinfo.go` | Hardware y uso en vivo (sin PowerShell) |

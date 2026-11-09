@@ -1,5 +1,43 @@
 export namespace main {
 	
+	export class CleanItem {
+	    id: string;
+	    title: string;
+	    desc: string;
+	    bytes: number;
+	    files: number;
+	    admin: boolean;
+	
+	    static createFrom(source: any = {}) {
+	        return new CleanItem(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.id = source["id"];
+	        this.title = source["title"];
+	        this.desc = source["desc"];
+	        this.bytes = source["bytes"];
+	        this.files = source["files"];
+	        this.admin = source["admin"];
+	    }
+	}
+	export class CleanOutcome {
+	    freed: number;
+	    errors: string[];
+	    error: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new CleanOutcome(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.freed = source["freed"];
+	        this.errors = source["errors"];
+	        this.error = source["error"];
+	    }
+	}
 	export class Live {
 	    cpu: number;
 	    ram: number;
@@ -12,6 +50,68 @@ export namespace main {
 	        if ('string' === typeof source) source = JSON.parse(source);
 	        this.cpu = source["cpu"];
 	        this.ram = source["ram"];
+	    }
+	}
+	export class Profile {
+	    id: string;
+	    title: string;
+	    description: string;
+	    tweaks: string[];
+	    needsAdmin: boolean;
+	
+	    static createFrom(source: any = {}) {
+	        return new Profile(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.id = source["id"];
+	        this.title = source["title"];
+	        this.description = source["description"];
+	        this.tweaks = source["tweaks"];
+	        this.needsAdmin = source["needsAdmin"];
+	    }
+	}
+	export class ProfileOutcome {
+	    applied: string[];
+	    skipped: string[];
+	    failed: string[];
+	    error: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new ProfileOutcome(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.applied = source["applied"];
+	        this.skipped = source["skipped"];
+	        this.failed = source["failed"];
+	        this.error = source["error"];
+	    }
+	}
+	export class StartupEntry {
+	    id: string;
+	    name: string;
+	    command: string;
+	    scope: string;
+	    label: string;
+	    enabled: boolean;
+	    admin: boolean;
+	
+	    static createFrom(source: any = {}) {
+	        return new StartupEntry(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.id = source["id"];
+	        this.name = source["name"];
+	        this.command = source["command"];
+	        this.scope = source["scope"];
+	        this.label = source["label"];
+	        this.enabled = source["enabled"];
+	        this.admin = source["admin"];
 	    }
 	}
 	export class SysInfo {

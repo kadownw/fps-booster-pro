@@ -72,6 +72,57 @@ func (a *App) RevertAll() string {
 	return ""
 }
 
+func (a *App) ListProfiles() []Profile { return profiles() }
+
+type ProfileOutcome struct {
+	ProfileResult
+	Error string `json:"error"`
+}
+
+func (a *App) ApplyProfile(id string) ProfileOutcome {
+	if a.engine == nil {
+		return ProfileOutcome{Error: a.initEr}
+	}
+	res, err := a.engine.ApplyProfile(id)
+	out := ProfileOutcome{ProfileResult: res}
+	if err != nil {
+		out.Error = err.Error()
+	}
+	return out
+}
+
+func (a *App) CreateRestorePoint() string {
+	if err := CreateRestorePoint(); err != nil {
+		return err.Error()
+	}
+	return ""
+}
+
+func (a *App) ScanCleanup() []CleanItem { return ScanCleanup() }
+
+type CleanOutcome struct {
+	CleanResult
+	Error string `json:"error"`
+}
+
+func (a *App) RunCleanup(ids []string) CleanOutcome {
+	res, err := RunCleanup(ids)
+	out := CleanOutcome{CleanResult: res}
+	if err != nil {
+		out.Error = err.Error()
+	}
+	return out
+}
+
+func (a *App) ListStartup() []StartupEntry { return ListStartup() }
+
+func (a *App) SetStartup(id string, enabled bool) string {
+	if err := SetStartup(id, enabled); err != nil {
+		return err.Error()
+	}
+	return ""
+}
+
 func (a *App) SetSimulation(v bool) {
 	if a.engine != nil {
 		a.engine.SetSimulation(v)
