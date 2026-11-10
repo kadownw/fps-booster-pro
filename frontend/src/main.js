@@ -7,9 +7,10 @@ import {
   CurrentGame, RunOnce, GameLibrary, GameCover, AppIcons,
   DiscordState, DiscordLogin, DiscordLogout, SetViewAs, ListFixes, FixCheck, RunFix,
 } from '../wailsjs/go/main/App';
-import { h, svg, icon, fmtBytes, fmtDuration, zone, worst, GLOW, colorAt, CAT_ICON } from './lib.js';
-import { tickGauge } from './gauge.js';
-import { lineChart, barChart } from './chart.js';
+import { h, icon, fmtBytes, zone, worst, GLOW, colorAt, CAT_ICON, TWEAK_ICON } from './lib.js';
+import { ringGauge } from './gauge.js';
+import { lineChart } from './chart.js';
+import { initReveals, reveal, revealPage, swapPage, splitTitle, tweenNumber, bump, initPointerFX, initScrollParallax, initTooltips } from './motion.js';
 
 // ---------- estado ----------
 const HIST_MAX = 150;                       // 150 muestras x 2 s = 5 minutos
@@ -75,6 +76,12 @@ const RISK = { safe: 'Seguro', moderate: 'Moderado' };
 const BRAND = { nvidia: 'NVIDIA', amd: 'AMD', intel: 'Intel' };
 const brandOf = (t) => t.vendor || (t.nvidia && t.nvidia.length ? 'nvidia' : '');
 const catIco = (c) => h('div', { class: 'cat-ico', 'data-cat': c }, icon(CAT_ICON[c] || 'cog'));
+const tweakIco = (t) => h('div', { class: 'cat-ico', 'data-cat': t.category }, icon(TWEAK_ICON[t.id] || CAT_ICON[t.category] || 'cog'));
+const dangerMark = (t) => h('button', {
+  type: 'button', class: 'danger-mark', 'aria-label': 'Advertencia: ' + t.warn,
+  'data-tip-title': 'Desactiva algo importante', 'data-tip': t.warn, 'data-tip-tone': 'warn',
+  onclick: (e) => e.stopPropagation(),
+}, icon('alert'));
 const fmtWhen = (iso) => new Date(iso).toLocaleString('es-AR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' });
 
 // ---------- cola de cambios ----------
@@ -106,6 +113,7 @@ function paintQueue() {
   const n = (a) => items.filter((x) => x.a === a).length;
   const parts = [n('apply') && `${n('apply')} por activar`, n('revert') && `${n('revert')} por desactivar`,
     n('once') && `${n('once')} acción${n('once') > 1 ? 'es' : ''} única${n('once') > 1 ? 's' : ''}`].filter(Boolean);
+  if (el.queueCount.textContent !== String(items.length)) bump(el.queueCount);
   el.queueCount.textContent = String(items.length);
   el.queueLabel.textContent = items.length === 1 ? 'proceso por aplicar' : 'procesos por aplicar';
   el.queueParts.textContent = parts.join(' · ');
@@ -130,6 +138,11 @@ async function applyQueue() {
       items.length > 10 && h('li', { class: 'k' }, `y ${items.length - 10} más…`)),
     onces.length > 0 && h('p', { class: 'warn' }, `${onces.length === 1 ? 'Hay 1 acción única' : `Hay ${onces.length} acciones únicas`} que no se pueden deshacer.`),
   ];
+  const risky = items.filter((x) => x.a !== 'revert' && x.t.warn);
+  if (risky.length) {
+    body.push(h('p', { class: 'warn' }, `${risky.length === 1 ? 'Este cambio desactiva' : 'Estos cambios desactivan'} algo importante:`),
+      h('ul', { class: 'mini warnlist' }, risky.map((x) => h('li', {}, h('b', {}, x.t.title + ': '), x.t.warn))));
+  }
   const r = await dialog('Aplicar cambios', body, { ok: 'Aplicar', check: canRestore ? { label: 'Crear un punto de restauración antes', checked: true } : null });
   if (!r.ok) return;
   runQueue(items, r.checked);
@@ -222,9 +235,10 @@ function buildRow(t) {
   const tags = h('div', { class: 'tc-tags' });
   const last = h('span', { class: 'tc-last' });
   const detail = h('p', { class: 'tc-detail' });
-  const row = h('div', { class: 'tcard', style: `animation-delay:${Math.min(S.rows.size, 12) * 20}ms` },
-    h('div', { class: 'tc-head' }, catIco(t.category), h('div', { class: 'tc-title' }, t.title),
-      brand && h('span', { class: 'vbadge ' + brand, title: `Exclusivo de ${BRAND[brand]}` }, BRAND[brand])),
+  const row = h('div', { class: 'tcard spot', 'data-vendor': brand || null },
+    h('div', { class: 'tc-head' }, tweakIco(t), h('div', { class: 'tc-title' }, t.title),
+      brand && h('span', { class: 'vbadge ' + brand, 'data-tip': `Este ajuste solo se aplica a placas ${BRAND[brand]}.` }, BRAND[brand]),
+      t.warn && dangerMark(t)),
     h('div', { class: 'tc-rule' }),
     h('p', { class: 'tc-desc' }, t.description),
     detail,
@@ -246,8 +260,8 @@ function buildRow(t) {
 
 function paintRow(r, t) {
   r.t = t;
-  r.row.classList.toggle('on', t.active);
-  r.row.classList.toggle('off', t.disabled);
+  r.row.classList.toggle('on', !!t.active);
+  r.row.classList.toggle('off', !!t.disabled);
   r.row.classList.toggle('locked', !!t.locked);
   r.lock.hidden = !t.locked;
   const blocked = t.disabled || (t.blocked && !t.active);
@@ -292,8 +306,11 @@ function paintSettingsList() {
     frag.append(h('div', { class: 'section' }, catIco(c), h('h2', {}, c), h('span', { class: 'count' }, items.length)));
     frag.append(h('div', { class: 'tgrid' }, items.map((t) => S.rows.get(t.id).row)));
   }
-  if (!cats.length) frag.append(h('p', { class: 'dim', style: 'padding:40px 0;text-align:center' }, 'Nada coincide con tu búsqueda.'));
+  if (!cats.length) frag.append(h('div', { class: 'glass empty' }, icon('search'), 'Nada coincide con tu búsqueda.'));
   el.list.replaceChildren(frag);
+  // las tarjetas nuevas (o que todavía no entraron) se revelan al aparecer en pantalla
+  el.list.querySelectorAll('.tgrid').forEach((g) => reveal([...g.children], { base: 40, step: 35 }));
+  reveal([...el.list.querySelectorAll(':scope > .section, :scope > .empty')], { kind: 'fade', step: 30 });
 }
 
 function paintChips() {
@@ -378,62 +395,96 @@ const revertAllFlow = async () => {
 };
 
 // ---------- tarjetas de hardware ----------
-function hwCard({ ico, title, sub, to, gauge, stats }) {
-  return h('div', { class: 'glass hw' },
-    h('div', { class: 'hw-l' },
-      h('div', { class: 'hw-ico' }, icon(ico)),
-      h('div', { class: 'hw-t' }, title),
-      h('div', { class: 'hw-s', title: sub }, sub),
-      h('div', { class: 'hw-stats' }, stats)),
-    h('div', { class: 'hw-g' }, gauge.el));
+function hwCard({ ico, title, sub, gauge, stats }) {
+  return h('div', { class: 'glass hw spot' },
+    h('div', { class: 'card-head' },
+      h('div', { class: 'head-ico' }, icon(ico)),
+      h('div', { class: 'head-txt' }, h('b', {}, title), h('span', { class: 'hw-s', title: sub }, sub))),
+    h('div', { class: 'hw-body' }, gauge.el, stats));
 }
 
-const stat = (k, v) => h('div', {}, h('span', {}, k), h('b', {}, v));
+// Fila de métrica con barra fina (como en los paneles de monitoreo). frac null = sin barra.
+function metric(label, value, frac = null) {
+  return h('div', { class: 'metric' },
+    h('div', { class: 'm-top' }, h('span', {}, label), h('b', {}, value)),
+    frac == null ? null : h('div', { class: 'm-bar' }, h('i', { style: `width:${Math.round(Math.min(1, Math.max(0, frac)) * 100)}%` })));
+}
+
+// Actualiza las métricas sin recrear las barras: así la barra anima su ancho en lugar de saltar.
+function setMetrics(box, rows) {
+  if (box.children.length !== rows.length) { box.replaceChildren(...rows.map((r) => metric(...r))); return; }
+  rows.forEach(([label, value, frac], i) => {
+    const m = box.children[i];
+    m.querySelector('.m-top span').textContent = label;
+    m.querySelector('.m-top b').textContent = value;
+    const bar = m.querySelector('.m-bar i');
+    if (bar && frac != null) bar.style.width = `${Math.round(Math.min(1, Math.max(0, frac)) * 100)}%`;
+  });
+}
 
 // ---------- páginas ----------
+const PAGE_NAME = { home: 'Inicio', games: 'Mis juegos', settings: 'Optimizar', fixes: 'Fixes', clean: 'Limpieza', startup: 'Inicio de Windows' };
 function pageHead(title, sub, right) {
-  return h('div', { class: 'top' }, h('div', {}, h('h1', {}, title), h('p', {}, sub)), right);
+  return h('div', { class: 'top' },
+    h('div', {},
+      h('div', { class: 'crumb' }, icon('home'), 'South Tweaks', icon('chevron'), h('b', {}, title)),
+      splitTitle('h1', title),
+      sub && h('p', {}, sub)),
+    right);
 }
 
 function pageHome() {
   const i = S.info;
-  const gCPU = tickGauge({ size: 150 }), gGPU = tickGauge({ size: 150 }), gRAM = tickGauge({ size: 150 }), gDSK = tickGauge({ size: 150 });
-  const cpuStats = h('div', { class: 'stats-mini' }), gpuStats = h('div', { class: 'stats-mini' });
-  const ramStats = h('div', { class: 'stats-mini' }), dskStats = h('div', { class: 'stats-mini' });
-  const hFill = h('div', { class: 'hbar-fill' }), hVal = h('div', { class: 'hbar-val' }), hChip = h('div', { class: 'hchip' });
-  const hIssues = h('ul', { class: 'hissues' });
   el.activeCount = h('b', {}, '–');
+  const gCPU = ringGauge(), gGPU = ringGauge(), gRAM = ringGauge(), gDSK = ringGauge();
+  const cpuStats = h('div', { class: 'hw-stats' }), gpuStats = h('div', { class: 'hw-stats' });
+  const ramStats = h('div', { class: 'hw-stats' }), dskStats = h('div', { class: 'hw-stats' });
+  const hFill = h('div', { class: 'hbar-fill' }), hVal = h('b', {}, '–'), hChip = h('div', { class: 'hchip' });
+  const hIssues = h('ul', { class: 'hissues' });
+  const healthCard = h('div', { class: 'glass health spot' },
+    h('div', { class: 'k' }, 'Salud del equipo'),
+    h('div', { class: 'h-score' }, hVal, h('span', {}, '/ 100')), hChip,
+    h('div', { class: 'hbar' }, hFill), hIssues,
+    h('div', { class: 'h-foot' },
+      h('div', { class: 'kv' }, h('span', {}, 'Ajustes activos'), el.activeCount),
+      h('div', { class: 'kv' }, h('span', {}, 'Permisos'), h('b', {}, i.admin ? 'Administrador' : 'Usuario')),
+      h('div', { class: 'kv' }, h('span', {}, 'Windows'), h('b', {}, (i.windows || '').replace(/\s*\(build.*\)/, ''))),
+      h('button', { class: 'sm', onclick: () => go('settings') }, icon('sliders'), 'Ir a Optimizar')));
 
   const cards = [
-    hwCard({ ico: 'cpu', title: 'Procesador', sub: i.cpu || 'Desconocido', to: 'pc', gauge: gCPU, stats: cpuStats }),
-    hwCard({ ico: 'gpu', title: 'Tarjeta de video', sub: (i.gpus || [])[0] || 'No detectada', to: 'pc', gauge: gGPU, stats: gpuStats }),
-    hwCard({ ico: 'ram', title: 'Memoria RAM', sub: `${i.ramGB.toFixed(1)} GB instalados`, to: 'pc', gauge: gRAM, stats: ramStats }),
-    hwCard({ ico: 'disk', title: 'Almacenamiento', sub: 'Unidad del sistema', to: 'pc', gauge: gDSK, stats: dskStats }),
+    hwCard({ ico: 'cpu', title: 'Procesador', sub: i.cpu || 'Desconocido', gauge: gCPU, stats: cpuStats }),
+    hwCard({ ico: 'gpu', title: 'Tarjeta de video', sub: (i.gpus || [])[0] || 'No detectada', gauge: gGPU, stats: gpuStats }),
+    hwCard({ ico: 'ram', title: 'Memoria RAM', sub: `${i.ramGB.toFixed(1)} GB instalados`, gauge: gRAM, stats: ramStats }),
+    hwCard({ ico: 'disk', title: 'Almacenamiento', sub: 'Unidad del sistema', gauge: gDSK, stats: dskStats }),
   ];
 
   const repaint = () => {
     const l = S.live; if (!l) return;
     const g = l.gpu;
-    gCPU.set({ frac: l.cpu / 100, state: zone(l.cpu, ZONES.cpu), text: Math.round(l.cpu), unitText: '%', labelText: 'En uso' });
-    cpuStats.replaceChildren(stat('Frecuencia', l.cpuMHz ? `${(l.cpuMHz / 1000).toFixed(2)} GHz` : '–'), stat('Núcleos', `${i.cpuInfo?.cores || '–'} / ${i.cpuInfo?.threads || i.cores} hilos`));
+    gCPU.set({ frac: l.cpu / 100, state: zone(l.cpu, ZONES.cpu), num: l.cpu, unitText: '%', labelText: 'En uso' });
+    setMetrics(cpuStats, [['Uso', `${Math.round(l.cpu)}%`, l.cpu / 100], ['Frecuencia', l.cpuMHz ? `${(l.cpuMHz / 1000).toFixed(2)} GHz` : '–'],
+      ['Núcleos / hilos', `${i.cpuInfo?.cores || '–'} / ${i.cpuInfo?.threads || i.cores}`]]);
     if (g && g.temp >= 0) {
-      gGPU.set({ frac: g.temp / 100, state: zone(g.temp, ZONES.temp), text: g.temp, unitText: '°C', labelText: 'Temperatura' });
-      gpuStats.replaceChildren(stat('Uso', `${g.util}%`), stat('VRAM', `${(g.vramUsed / 1024).toFixed(1)} / ${(g.vramTotal / 1024).toFixed(0)} GB`));
+      gGPU.set({ frac: g.temp / 100, state: zone(g.temp, ZONES.temp), num: g.temp, unitText: '°C', labelText: 'Temperatura' });
+      setMetrics(gpuStats, [['Uso', `${g.util}%`, g.util / 100], ['VRAM', `${(g.vramUsed / 1024).toFixed(1)} / ${(g.vramTotal / 1024).toFixed(0)} GB`, g.vramTotal ? g.vramUsed / g.vramTotal : 0],
+        ['Consumo', g.power >= 0 ? `${g.power.toFixed(0)} W` : '–']]);
     } else {
-      gGPU.set({ frac: null, text: '–', labelText: 'Sin datos' });
-      gpuStats.replaceChildren(h('div', { class: 'dim' }, 'Temperatura y uso disponibles solo en NVIDIA.'));
+      gGPU.set({ frac: null, num: null, labelText: 'Sin datos' });
+      gpuStats.replaceChildren(h('div', { class: 'dim' }, 'Temperatura y uso en vivo disponibles solo en placas NVIDIA.'));
     }
-    gRAM.set({ frac: l.ram / 100, state: zone(l.ram, ZONES.ram), text: Math.round(l.ram), unitText: '%', labelText: 'En uso' });
-    ramStats.replaceChildren(stat('Usada', `${l.ramUsedGB.toFixed(1)} GB`), stat('Libre', `${(l.ramTotalGB - l.ramUsedGB).toFixed(1)} GB`));
+    gRAM.set({ frac: l.ram / 100, state: zone(l.ram, ZONES.ram), num: l.ram, unitText: '%', labelText: 'En uso' });
+    setMetrics(ramStats, [['Usada', `${l.ramUsedGB.toFixed(1)} GB`, l.ram / 100], ['Libre', `${(l.ramTotalGB - l.ramUsedGB).toFixed(1)} GB`],
+      ['Total', `${l.ramTotalGB.toFixed(1)} GB`]]);
     const d = systemDisk(l);
     if (d) {
-      gDSK.set({ frac: d.usedPct / 100, state: zone(d.usedPct, ZONES.disk), text: Math.round(d.usedPct), unitText: '%', labelText: `Usado · ${d.letter}` });
-      dskStats.replaceChildren(stat('Libre', `${d.freeGB.toFixed(0)} GB`), stat('Actividad', `${Math.round(l.diskBusy)}%`));
+      gDSK.set({ frac: d.usedPct / 100, state: zone(d.usedPct, ZONES.disk), num: d.usedPct, unitText: '%', labelText: `Usado · ${d.letter}` });
+      setMetrics(dskStats, [['Libre', `${d.freeGB.toFixed(0)} GB de ${d.totalGB.toFixed(0)} GB`, 1 - d.usedPct / 100], ['Actividad', `${Math.round(l.diskBusy)}%`, l.diskBusy / 100]]);
     }
     const hl = health(l), st = healthState(hl.score);
-    hFill.style.height = hl.score + '%';
-    hFill.style.background = `linear-gradient(0deg, ${colorAt(st, 0)}, ${colorAt(st, 1)})`;
-    hVal.textContent = hl.score + '%';
+    hFill.style.width = hl.score + '%';
+    hFill.style.background = `linear-gradient(90deg, ${colorAt(st, 0)}, ${colorAt(st, 1)})`;
+    tweenNumber(hVal, hl.score);
+    healthCard.dataset.state = st;
     hChip.textContent = healthText(hl.score);
     hChip.className = 'hchip ' + st;
     hIssues.replaceChildren(...(hl.issues.length ? hl.issues.map((x) => h('li', {}, x)) : [h('li', { class: 'ok' }, 'Todo en orden')]));
@@ -442,29 +493,25 @@ function pageHome() {
   paintLiveFns = [repaint, panel.repaint];
   setTimeout(() => { repaint(); panel.repaint(); }, 0);
 
-  const tile = (ico, title, sub, onclick) => h('button', { class: 'tile', onclick },
-    h('div', { class: 'tile-ico' }, icon(ico)), h('div', { class: 'tile-t' }, h('b', {}, title), h('span', {}, sub)), icon('chevron', 'tile-go'));
+  const tile = (ico, title, sub, onclick, cat) => h('button', { class: 'tile spot', onclick },
+    h('div', { class: 'tile-ico', 'data-cat': cat }, icon(ico)), h('div', { class: 'tile-t' }, h('b', {}, title), h('span', {}, sub)), icon('chevron', 'tile-go'));
+  const who = S.discord && S.discord.loggedIn ? S.discord.name : (i.user || '');
 
   return [
-    h('div', { class: 'top' },
-      h('div', {}, h('h1', {}, `Bienvenido${S.discord && S.discord.loggedIn ? ', ' + S.discord.name : (i.user ? ', ' + i.user : '')}`), h('p', {}, '¿Cómo anda tu PC hoy?'))),
-    h('div', { class: 'dash' },
-      h('div', { class: 'glass health' },
-        h('div', { class: 'k' }, 'Salud'), hChip,
-        h('div', { class: 'hbar' }, hFill), hVal, hIssues),
-      h('div', { class: 'hwgrid' }, cards)),
+    pageHead(`Bienvenido${who ? ', ' + who : ''}`, 'Así está tu PC en este momento. Todo lo que ves se lee de tu equipo en vivo.',
+      h('div', { class: 'live-pill' }, h('span', { class: 'live-dot' }), 'En vivo')),
+    h('div', { class: 'dash' }, healthCard, h('div', { class: 'hwgrid' }, cards)),
     h('div', { class: 'tiles' },
-      tile('sliders', 'Optimizar', 'Elegí y aplicá ajustes', () => go('settings')),
-      tile('trash', 'Limpiar archivos', 'Liberá espacio', () => go('clean')),
-      tile('gamepad', 'Mis juegos', 'Detector y sesiones', () => go('games')),
-      tile('rocket', 'Programas de inicio', 'Arranque más rápido', () => go('startup')),
-      tile('restore', 'Punto de restauración', 'Antes de cambiar nada', makeRestorePoint)),
+      tile('wrench', 'Fixes', 'Arreglos de Windows', () => go('fixes'), 'Sistema'),
+      tile('trash', 'Limpiar archivos', 'Liberá espacio', () => go('clean'), 'Acciones únicas'),
+      tile('gamepad', 'Mis juegos', 'Portadas y FPS', () => go('games'), 'Juegos'),
+      tile('restore', 'Punto de restauración', 'Antes de cambiar nada', makeRestorePoint, 'Privacidad')),
     ...panel.nodes,
     h('div', { class: 'section' }, h('h2', {}, 'Seguridad')),
-    h('div', { class: 'glass safety' },
+    h('div', { class: 'glass safety spot' },
       h('div', {}, h('b', {}, 'Todo es reversible'),
         h('p', { class: 'd' }, 'Cada ajuste guarda su valor original antes de aplicarse. Además podés crear un punto de restauración de Windows antes de empezar.'),
-        h('p', { class: 'd' }, 'Ajustes activos: ', el.activeCount)),
+        h('p', { class: 'd' }, 'Si algo no te convence, «Revertir todo» devuelve cada valor a como estaba.')),
       h('div', { class: 'row' }, h('button', { class: 'danger', 'data-needbusy': 1, onclick: revertAllFlow }, 'Revertir todo'))),
   ];
 }
@@ -473,8 +520,8 @@ function pageHome() {
 function pcPanel() {
   const i = S.info;
   const series = [
-    { key: 'cpu', label: 'CPU', color: '#2fe3a2' }, { key: 'gpu', label: 'GPU', color: '#6c8cff' },
-    { key: 'ram', label: 'RAM', color: '#f6c945' }, { key: 'disk', label: 'Disco', color: '#ff7a8a' },
+    { key: 'cpu', label: 'CPU', color: '#38bdf8' }, { key: 'gpu', label: 'GPU', color: '#a78bfa' },
+    { key: 'ram', label: 'RAM', color: '#fbbf24' }, { key: 'disk', label: 'Disco', color: '#fb7185' },
   ];
   const chart = lineChart({ series, height: 250 });
   const legend = h('div', { class: 'legend' });
@@ -502,22 +549,22 @@ function pcPanel() {
     drawChart(); drawLegend();
     const ci = i.cpuInfo || {};
     detail.replaceChildren(
-      h('div', { class: 'glass dcard' }, h('div', { class: 'dhead' }, icon('cpu'), h('b', {}, 'Procesador')), h('div', { class: 'dsub' }, i.cpu),
+      h('div', { class: 'glass dcard spot' }, h('div', { class: 'dhead' }, icon('cpu'), h('b', {}, 'Procesador')), h('div', { class: 'dsub' }, i.cpu),
         row('Núcleos / hilos', `${ci.cores || '–'} / ${ci.threads || i.cores}`),
         row('Frecuencia actual', l.cpuMHz ? `${(l.cpuMHz / 1000).toFixed(2)} GHz` : '–'),
         row('Frecuencia base', ci.baseMHz ? `${(ci.baseMHz / 1000).toFixed(2)} GHz` : '–'),
         row('Caché L2', ci.l2KB ? `${(ci.l2KB / 1024).toFixed(ci.l2KB % 1024 ? 1 : 0)} MB` : '–'),
         row('Caché L3', ci.l3KB ? `${(ci.l3KB / 1024).toFixed(ci.l3KB % 1024 ? 1 : 0)} MB` : '–'),
         h('div', { class: 'dim', style: 'margin-top:8px' }, 'La temperatura de la CPU no se muestra: Windows no la expone sin un driver de hardware.')),
-      h('div', { class: 'glass dcard' }, h('div', { class: 'dhead' }, icon('gpu'), h('b', {}, 'Tarjeta de video')), h('div', { class: 'dsub' }, g ? g.name : (i.gpus || [])[0] || 'No detectada'),
+      h('div', { class: 'glass dcard spot' }, h('div', { class: 'dhead' }, icon('gpu'), h('b', {}, 'Tarjeta de video')), h('div', { class: 'dsub' }, g ? g.name : (i.gpus || [])[0] || 'No detectada'),
         g ? [row('Temperatura', g.temp >= 0 ? `${g.temp} °C` : '–'), row('Uso', `${g.util}%`),
           row('VRAM', `${(g.vramUsed / 1024).toFixed(1)} / ${(g.vramTotal / 1024).toFixed(0)} GB`),
           row('Reloj del núcleo', `${g.clock} / ${g.clockMax} MHz`), row('Consumo', g.power >= 0 ? `${g.power.toFixed(0)} W` : '–'),
           row('Ventilador', g.fan >= 0 ? `${g.fan}%` : '–'), row('Driver', g.driver)]
           : h('div', { class: 'dim' }, 'Los datos en vivo de la GPU están disponibles para tarjetas NVIDIA.')),
-      h('div', { class: 'glass dcard' }, h('div', { class: 'dhead' }, icon('ram'), h('b', {}, 'Memoria')), h('div', { class: 'dsub' }, `${l.ramTotalGB.toFixed(1)} GB instalados`),
+      h('div', { class: 'glass dcard spot' }, h('div', { class: 'dhead' }, icon('ram'), h('b', {}, 'Memoria')), h('div', { class: 'dsub' }, `${l.ramTotalGB.toFixed(1)} GB instalados`),
         row('En uso', `${l.ramUsedGB.toFixed(1)} GB (${Math.round(l.ram)}%)`), row('Disponible', `${(l.ramTotalGB - l.ramUsedGB).toFixed(1)} GB`)),
-      h('div', { class: 'glass dcard' }, h('div', { class: 'dhead' }, icon('disk'), h('b', {}, 'Almacenamiento')), h('div', { class: 'dsub' }, `Actividad del disco: ${Math.round(l.diskBusy)}%`),
+      h('div', { class: 'glass dcard spot' }, h('div', { class: 'dhead' }, icon('disk'), h('b', {}, 'Almacenamiento')), h('div', { class: 'dsub' }, `Actividad del disco: ${Math.round(l.diskBusy)}%`),
         (l.disks || []).map((d) => h('div', { class: 'drive' },
           h('div', { class: 'kv' }, h('span', {}, d.letter), h('b', {}, `${d.freeGB.toFixed(0)} GB libres de ${d.totalGB.toFixed(0)} GB`)),
           h('div', { class: 'meter' }, h('i', { style: `width:${d.usedPct}%;background:linear-gradient(90deg,${colorAt(zone(d.usedPct, ZONES.disk), 0)},${colorAt(zone(d.usedPct, ZONES.disk), 1)})` }))))));
@@ -526,8 +573,8 @@ function pcPanel() {
     repaint,
     nodes: [
       h('div', { class: 'section' }, h('h2', {}, 'Tu equipo en tiempo real')),
-      h('div', { class: 'glass chartcard' }, h('div', { class: 'chead' }, h('b', {}, 'Uso en tiempo real'), rangeBtns), chart.el, legend),
-      h('div', { style: 'height:12px' }),
+      h('div', { class: 'glass chartcard spot' }, h('div', { class: 'chead' }, h('b', {}, 'Uso en tiempo real'), rangeBtns), chart.el, legend),
+      h('div', { style: 'height:14px' }),
       detail,
     ],
   };
@@ -540,7 +587,7 @@ const fpsNum = (v) => (v > 0 ? Math.round(v) : '–');
 function gameCard(g, playing) {
   const cover = h('div', { class: 'cv-art', style: `--h:${hue(g.exe)}` }, h('span', { class: 'cv-init' }, (g.game || '?').slice(0, 1).toUpperCase()));
   GameCover(g.path || '').then((src) => {
-    if (src) { cover.replaceChildren(h('img', { src, alt: g.game, draggable: 'false' })); cover.classList.add('has-img'); return; }
+    if (src) { const img = h('img', { alt: g.game, draggable: 'false', onload: () => img.classList.add('loaded') }); img.src = src; cover.replaceChildren(img); cover.classList.add('has-img'); return; }
     return AppIcons([g.path]).then((m) => { if (m && m[g.path]) cover.prepend(h('img', { class: 'cv-exe', src: m[g.path], alt: '' })); });
   }).catch(() => {});
   const stat2 = (label, v) => h('div', { class: 'cv-stat' }, h('span', {}, label), h('b', {}, fpsNum(v)));
@@ -561,12 +608,22 @@ function gameCard(g, playing) {
 
 function pageGames() {
   const grid = h('div', { class: 'cover-grid' });
+  const summary = h('div', { class: 'gsum' });
   const draw = (games) => {
     if (!games.length) {
       grid.replaceChildren(h('div', { class: 'glass empty' }, 'Todavía no hay juegos. Abrí uno (Steam, Epic, Riot, Xbox, GOG, Ubisoft, EA, Rockstar, Roblox) y su portada aparece acá al cerrarlo.'));
       return;
     }
     grid.replaceChildren(...games.map((g) => gameCard(g, S.game && S.game.exe && S.game.exe.toLowerCase() === g.exe.toLowerCase())));
+    const measured = games.filter((g) => g.measured && g.avgFps > 0);
+    const best = measured.slice().sort((a, b) => b.avgFps - a.avgFps)[0];
+    const box = (ico, cat, value, label) => h('div', { class: 'glass spot' }, h('div', { class: 'head-ico', 'data-cat': cat }, icon(ico)), h('div', {}, h('b', {}, value), h('span', {}, label)));
+    summary.replaceChildren(
+      box('gamepad', 'Juegos', String(games.length), games.length === 1 ? 'juego detectado' : 'juegos detectados'),
+      box('activity', 'Sistema', String(measured.length), 'con FPS medidos'),
+      box('trend', 'GPU', best ? `${Math.round(best.avgFps)} FPS` : '–', best ? `mejor media · ${best.game}` : 'todavía sin mediciones'));
+    reveal([...summary.children], { step: 60 });
+    reveal([...grid.children], { base: 120, step: 45 });
   };
   const load = async () => {
     S.game = await CurrentGame();
@@ -578,7 +635,7 @@ function pageGames() {
   };
   grid.replaceChildren(h('div', { class: 'glass empty' }, h('div', { class: 'spin' }), ' Buscando tus juegos…'));
   load();
-  return [pageHead('Mis juegos', 'Pasá el mouse por un juego para ver sus FPS de la última sesión.'), grid];
+  return [pageHead('Mis juegos', 'Pasá el mouse por un juego para ver sus FPS de la última sesión.'), summary, grid];
 }
 function pageSettings() {
   el.search = h('input', { class: 'search', placeholder: 'Buscar ajustes…', value: S.q, oninput: (e) => { S.q = e.target.value; paintSettingsList(); } });
@@ -592,16 +649,21 @@ function pageSettings() {
   setTimeout(() => { paintScan(); refresh(); }, 0);        // cada vez que se abre Optimizar se lee la PC de nuevo
   setTimeout(() => { paintChips(); paintSettingsList(); paintState(); }, 0);
   return [
-    pageHead('Optimizar', 'Elegí lo que querés activar o desactivar y aplicalo todo junto desde la barra de abajo. Las acciones únicas no se pueden deshacer.', el.search),
+    pageHead('Optimizar', 'Elegí lo que querés activar o desactivar y aplicalo todo junto desde la barra de abajo. Las acciones únicas no se pueden deshacer.',
+      h('div', { class: 'head-actions' }, el.search,
+        h('label', { class: 'chk pill', 'data-tip': 'Probá los cambios sin tocar tu Windows: la app hace como que los aplica.' }, el.simBox, 'Simulación'),
+        el.revertAll)),
     el.simBanner, el.upgradeBanner, el.scanBar,
-    h('div', { class: 'toolbar' }, el.chips,
-      h('div', { class: 'row' }, h('label', { class: 'chk' }, el.simBox, 'Modo simulación'), el.revertAll)),
+    h('div', { class: 'toolbar' }, el.chips),
     el.list,
   ];
 }
 
+const CLEAN_ICON = { temp_user: 'folder', temp_windows: 'folder', crash_dumps: 'alert', wer_reports: 'info', shader_cache: 'gpu', web_cache: 'globe' };
+const CLEAN_CAT = { temp_user: 'Sistema', temp_windows: 'Sistema', crash_dumps: 'Acciones únicas', wer_reports: 'Privacidad', shader_cache: 'GPU', web_cache: 'Red' };
+
 function pageClean() {
-  const wrap = h('div');
+  const wrap = h('div', { class: 'tlist' });
   const render = () => {
     const items = S.clean;
     if (!items) { wrap.replaceChildren(h('div', { class: 'glass empty' }, h('div', { class: 'spin' }), ' Calculando tamaños…')); return; }
@@ -617,6 +679,7 @@ function pageClean() {
       const blocked = i.admin && !S.info.admin;
       const cb = h('input', { type: 'checkbox', checked: sel.has(i.id), disabled: blocked || i.bytes === 0, onchange: (e) => { e.target.checked ? sel.add(i.id) : sel.delete(i.id); update(); } });
       return h('div', { class: 'tweak' + (blocked ? ' off' : '') },
+        h('div', { class: 'cat-ico', 'data-cat': CLEAN_CAT[i.id] || 'Sistema' }, icon(CLEAN_ICON[i.id] || 'trash')),
         h('div', { class: 'info' }, h('div', { class: 't' }, i.title, i.admin && h('span', { class: 'tag adm' }, 'Admin')), h('div', { class: 'd' }, i.desc)),
         h('div', { class: 'size' }, h('b', {}, fmtBytes(i.bytes)), h('span', { class: 'k' }, `${i.files} archivos`)),
         h('label', { class: 'switch' }, cb, h('span')));
@@ -649,7 +712,7 @@ function pageClean() {
 }
 
 function pageStartup() {
-  const wrap = h('div');
+  const wrap = h('div', { class: 'tlist' });
   if (!fullAccess()) {
     return [pageHead('Inicio de Windows', 'Desactivá programas que arrancan con Windows.'),
       h('div', { class: 'glass upsell-card' }, icon('lock', 'big'), h('h3', {}, 'Disponible en Pro Tier'),
@@ -735,7 +798,7 @@ function pageFixes() {
         if (o.error) toast(o.error, 'err'); else toast(o.message, 'ok');
         pageFixesRefresh();
       } }, 'Deshacer') : null;
-      return h('div', { class: 'fixcard' },
+      return h('div', { class: 'fixcard spot' },
         h('div', { class: 'fix-head' }, h('div', { class: 'fix-ico', 'data-brand': FIX_BRAND[f.icon] || '' }, icon(f.icon === 'nvidia' ? 'gpu' : f.icon)), h('div', { class: 'fix-title' }, f.title)),
         h('div', { class: 'tc-rule' }),
         h('p', { class: 'fix-desc' }, f.description),
@@ -760,16 +823,41 @@ const PAGES = [
   { id: 'startup', label: 'Inicio de Windows', icon: 'rocket', render: pageStartup },
 ];
 
+// Menú lateral: se arma una vez; al cambiar de página solo se mueve el indicador (se desliza con la curva
+// de entrada) y cambia la clase del botón activo.
+function buildNav() {
+  el.navInd = h('div', { class: 'nav-ind', 'aria-hidden': 'true' });
+  el.navBtns = new Map();
+  const btns = PAGES.map((p) => {
+    const b = h('button', { class: 'nav', onclick: () => { if (S.page !== p.id || !el.content.firstChild) go(p.id); } }, icon(p.icon), p.label,
+      p.id === 'fixes' ? h('span', { class: 'new' }, 'Nuevo') : null);
+    el.navBtns.set(p.id, b);
+    return b;
+  });
+  el.nav.replaceChildren(h('div', { class: 'nav-label' }, 'Menú'), h('div', { class: 'nav-wrap' }, el.navInd, btns));
+}
+
+function moveNav(id) {
+  const b = el.navBtns && el.navBtns.get(id);
+  if (!b) return;
+  for (const [k, v] of el.navBtns) { v.classList.toggle('on', k === id); v.setAttribute('aria-current', k === id ? 'page' : 'false'); }
+  el.navInd.style.transform = `translate3d(0, ${b.offsetTop}px, 0)`;
+}
+
 function go(id) {
   S.page = id;
   if (id === 'startup') S.startup = null;     // siempre se relee al entrar
   if (id === 'clean') S.clean = null;
   paintLiveFns = [];
-  el.nav.replaceChildren(...PAGES.map((p) => h('button', { class: 'nav' + (p.id === id ? ' on' : ''), onclick: () => go(p.id) }, icon(p.icon), p.label)));
+  moveNav(id);
   const page = PAGES.find((p) => p.id === id);
-  el.content.replaceChildren(h('div', { class: 'page' }, page.render()));
-  el.main.scrollTo({ top: 0 });
-  paintState();
+  const node = h('div', { class: 'page' }, page.render());
+  document.title = `${PAGE_NAME[id] || ''} · South Tweaks`;
+  swapPage(el.content, node, (n) => {
+    el.main.scrollTop = 0;
+    revealPage(n);
+    paintState();
+  });
 }
 
 // ---------- sesión, niveles y Discord ----------
@@ -868,7 +956,7 @@ function paintUser() {
 function build() {
   el.nav = h('nav');
   el.user = h('div', { class: 'user' });
-  el.content = h('div');
+  el.content = h('div', { class: 'content' });
   el.busy = h('div', { class: 'busy-bar', hidden: true });
   el.adminBanner = h('div', { class: 'banner', hidden: true }, 'Algunos ajustes necesitan permisos de administrador.',
     h('button', { onclick: async () => { const e = await RelaunchAsAdmin(); if (e) toast(e, 'err'); } }, 'Reiniciar como administrador'));
@@ -883,11 +971,18 @@ function build() {
   el.main = h('main', {}, el.adminBanner, el.content);
   document.getElementById('app').replaceChildren(
     h('aside', {},
-      h('div', { class: 'brand' }, h('div', { class: 'logo' }, 'ST'), h('div', {}, h('b', {}, 'South Tweaks'), h('small', {}, 'v2 · Go'))),
+      h('div', { class: 'brand' }, h('div', { class: 'logo' }, 'ST'), h('div', {}, h('b', {}, 'South Tweaks'), h('small', {}, 'Optimizador para juegos'))),
       el.nav,
       el.user),
     el.main);
+  buildNav();
+  document.body.prepend(h('div', { class: 'bg', 'aria-hidden': 'true' }, h('div', { class: 'orb o1' }), h('div', { class: 'orb o2' }), h('div', { class: 'orb o3' })));
   document.body.append(el.busy, el.queue, toasts);
+  initReveals(el.main);
+  initScrollParallax(el.main);
+  initPointerFX();
+  initTooltips();
+  window.addEventListener('resize', () => moveNav(S.page));
 }
 
 // ---------- muestras en vivo ----------

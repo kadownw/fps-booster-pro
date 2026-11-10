@@ -1,50 +1,55 @@
-import { h, svg, colorAt } from './lib.js';
+import { h, svg } from './lib.js';
+import { tweenNumber } from './motion.js';
 
-// Medidor de marcas radiales: un arco abierto abajo con N marcas que se encienden según el valor.
-// El color depende del estado (cool/warm/hot) y cambia suavemente.
-const START = 150;   // grados (0° = derecha, sentido horario): abajo a la izquierda
-const SWEEP = 240;
+// Medidor de anillo: arco de 280° abierto abajo, trazo fino con extremo redondeado y degradado según el
+// estado (normal / atención / crítico). El arco y el número se animan juntos con la misma curva.
+const ARC = 77.8;            // 280° de 360° expresado sobre pathLength = 100
+let uid = 0;
 
-export function tickGauge({ ticks = 44, size = 170 } = {}) {
-  const cx = 100, cy = 100, r1 = 70, r2 = 88;
-  const lines = [];
-  for (let i = 0; i < ticks; i++) {
-    const a = ((START + (SWEEP * i) / (ticks - 1)) * Math.PI) / 180;
-    const major = i % 5 === 0;
-    const rin = major ? r1 - 4 : r1;
-    lines.push(svg('line', {
-      x1: cx + rin * Math.cos(a), y1: cy + rin * Math.sin(a), x2: cx + r2 * Math.cos(a), y2: cy + r2 * Math.sin(a),
-      class: 'tick', 'stroke-width': major ? 3.2 : 2.4, 'stroke-linecap': 'round',
-    }));
-  }
-  const value = h('div', { class: 'g-value' });
-  const unit = h('span', { class: 'g-unit' });
-  const label = h('div', { class: 'g-label' });
-  const root = h('div', { class: 'gauge2', style: `width:${size}px;height:${size}px` },
-    svg('svg', { viewBox: '0 0 200 200' }, lines),
-    h('div', { class: 'g-center' }, h('div', { class: 'g-row' }, value, unit), label));
+const TONES = {
+  cool: ['#38bdf8', '#6366f1'],
+  warm: ['#fbbf24', '#f97316'],
+  hot: ['#fb7185', '#e11d48'],
+};
 
-  let lastLit = -1, lastState = '';
+export function ringGauge({ size = 132 } = {}) {
+  const id = 'rg' + uid++;
+  const stop1 = svg('stop', { offset: '0', 'stop-color': TONES.cool[0] });
+  const stop2 = svg('stop', { offset: '1', 'stop-color': TONES.cool[1] });
+  const track = svg('circle', { cx: 60, cy: 60, r: 50, pathLength: 100, class: 'rg-track', 'stroke-dasharray': `${ARC} 100` });
+  const bar = svg('circle', { cx: 60, cy: 60, r: 50, pathLength: 100, class: 'rg-bar', stroke: `url(#${id})`, 'stroke-dasharray': `0 100` });
+  const value = h('span', { class: 'rg-val' }, '–');
+  const unit = h('span', { class: 'rg-unit' });
+  const label = h('div', { class: 'rg-label' });
+  const root = h('div', { class: 'ring', style: `width:${size}px;height:${size}px` },
+    svg('svg', { viewBox: '0 0 120 120' },
+      svg('defs', {}, svg('linearGradient', { id, x1: 0, y1: 0, x2: 1, y2: 1 }, stop1, stop2)),
+      svg('g', { transform: 'rotate(130 60 60)' }, track, bar)),
+    h('div', { class: 'rg-center' }, h('div', { class: 'rg-row' }, value, unit), label));
+
+  let lastState = '';
   return {
     el: root,
-    // frac: 0..1 | null (sin datos). text/unitText/labelText: lo que se muestra en el centro.
-    set({ frac, state = 'cool', text, unitText = '', labelText = '' }) {
-      value.textContent = text;
+    // frac 0..1 | null (sin datos). num: número a mostrar; unitText / labelText: lo que lo acompaña.
+    set({ frac, state = 'cool', num, unitText = '', labelText = '', decimals = 0 }) {
       unit.textContent = unitText;
       label.textContent = labelText;
-      const lit = frac == null ? 0 : Math.round(Math.min(1, Math.max(0, frac)) * ticks);
-      if (lit === lastLit && state === lastState) return;
-      lastLit = lit; lastState = state;
-      lines.forEach((ln, i) => {
-        if (i < lit) {
-          ln.style.stroke = colorAt(state, i / (ticks - 1));
-          ln.style.opacity = 1;
-        } else {
-          ln.style.stroke = '';
-          ln.style.opacity = '';
-        }
-        ln.classList.toggle('lit', i < lit);
-      });
+      if (num == null || frac == null) {
+        value.textContent = '–';
+        bar.style.strokeDasharray = '0 100';
+        root.classList.add('nodata');
+        return;
+      }
+      root.classList.remove('nodata');
+      tweenNumber(value, num, { decimals });
+      const f = Math.min(1, Math.max(0, frac));
+      bar.style.strokeDasharray = `${(f * ARC).toFixed(2)} 100`;
+      if (state !== lastState) {
+        lastState = state;
+        stop1.setAttribute('stop-color', TONES[state][0]);
+        stop2.setAttribute('stop-color', TONES[state][1]);
+        root.dataset.state = state;
+      }
     },
   };
 }

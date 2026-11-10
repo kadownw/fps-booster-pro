@@ -408,3 +408,16 @@ func TestAliasesPointToExistingTweaks(t *testing.T) {
 		}
 	}
 }
+
+func TestDangerNotesPointToRealTweaks(t *testing.T) {
+	for id, note := range dangerNotes {
+		tw, ok := findTweak(id)
+		if !ok {
+			t.Errorf("aviso para un ajuste que no existe: %s", id)
+			continue
+		}
+		if tw.Warn != note || len(note) < 40 {
+			t.Errorf("%s: el aviso no llegó al ajuste o es demasiado corto", id)
+		}
+	}
+}

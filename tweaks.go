@@ -70,6 +70,8 @@ type Tweak struct {
 	// Fix: arreglo de un problema de Windows (pestaña Fixes); no aparece en Optimizar. Icon: icono de su tarjeta.
 	Fix  bool   `json:"fix,omitempty"`
 	Icon string `json:"icon,omitempty"`
+	// Warn: aviso de peligro (desactiva algo importante). La interfaz lo muestra con un triángulo.
+	Warn string `json:"warn,omitempty"`
 }
 
 // PSSpec: estado = salida de State (texto); Want = valor que busca el ajuste; Apply/Revert = comandos fijos.
@@ -237,6 +239,7 @@ func catalog() []Tweak {
 	list = append(list, cleanCatalog()...)
 	list = append(list, fixesCatalog()...)
 	dedupeMaxPerf(list)
+	applyWarnings(list)
 	for i := range list {
 		list[i].Risk = "safe"
 		if moderate[list[i].ID] {

@@ -529,6 +529,7 @@ export namespace main {
 	    once?: boolean;
 	    fix?: boolean;
 	    icon?: string;
+	    warn?: string;
 	    active: boolean;
 	    canUndo: boolean;
 	    blocked: boolean;
@@ -562,6 +563,7 @@ export namespace main {
 	        this.once = source["once"];
 	        this.fix = source["fix"];
 	        this.icon = source["icon"];
+	        this.warn = source["warn"];
 	        this.active = source["active"];
 	        this.canUndo = source["canUndo"];
 	        this.blocked = source["blocked"];
